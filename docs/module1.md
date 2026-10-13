@@ -95,7 +95,7 @@ Output of `configs/scenarios/infeasible.yaml`:
 O2 (Stadium Shelter C, 80 meals): transport    - no open road from the kitchen to Stadium Shelter C (closed: R12, R13)
 O3 (School Shelter A, 30 meals): equipment     - Idli sambar needs a steamer (T1 failed)
 O6 (School Shelter A, 100 meals): time         - deadline 09:00, but the earliest possible arrival is 09:43 (70 min of kitchen work + 33 min drive)
-O4 (Temple Shelter B, 50 meals): ingredients   - diet [diabetic, gluten_free] allows only Millet khichdi - no shelf holds millet
+O4 (Temple Shelter B, 50 meals): ingredients   - no diet-safe menu can be cooked: Millet khichdi (no shelf holds millet)
 O5 (School Shelter A, 60 meals): staff         - everyone who can 'cook' is off shift after the order arrives at 13:30
 ```
 

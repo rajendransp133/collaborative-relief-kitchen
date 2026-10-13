@@ -101,12 +101,11 @@ def direct_checks(sc: Scenario, order: Order, accepted: list[Order], hints: dict
         if r.main_ingredient not in shelved:
             short.insert(0, f"no shelf holds {r.main_ingredient}")
         if short:
-            shortages.append(f"{r.name}: {'; '.join(short)}")
+            shortages.append(f"{r.name} ({'; '.join(short)})")
         else:
             stocked.append(r)
     if not stocked:
-        causes.append(Cause("ingredients", f"diet [{diet}] allows only {', '.join(r.name for r in recipes)} - "
-                                           + " | ".join(shortages)))
+        causes.append(Cause("ingredients", "no diet-safe menu can be cooked: " + ", ".join(shortages)))
 
     # equipment: each stage of the recipe needs a working station of the right type and size
     grid, broken = sc.kitchen, []
