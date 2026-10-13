@@ -12,9 +12,12 @@ def test_road_closure_reroutes_hospital():
 
 
 def test_stove_failure_moves_work_to_working_stoves():
-    *_, last = run_timeline(str(SCENARIOS / "stove_failure.yaml"))
-    assert len(last.accepted) == 3
-    assert {t.station for t in last.allocation.tasks} & {"C1", "C2"} == set()
+    _, after_c2, after_c1 = run_timeline(str(SCENARIOS / "stove_failure.yaml"))
+    assert len(after_c2.accepted) == 3  # one stove down: work moves to the others
+    assert all(t.station != "C2" for t in after_c2.allocation.tasks)
+    assert {t.station for t in after_c1.allocation.tasks} & {"C1", "C2"} == set()
+    for d in after_c1.diagnoses.values():  # two stoves down: anything dropped is blamed on equipment
+        assert "equipment" in d.categories
 
 
 def test_rice_shortage_substitutes_safe_menu():

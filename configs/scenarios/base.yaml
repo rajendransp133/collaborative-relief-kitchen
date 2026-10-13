@@ -5,7 +5,7 @@ description: >
 
 start: "08:00"
 end: "16:00"
-slot_minutes: 10
+slot_minutes: 5
 batch_size: 50
 food_safety:
   max_hold_minutes: 150   # cooked food must be served within 2.5 h
@@ -104,7 +104,7 @@ vehicles:
   V3: {capacity: 40, speed: 1.5}
 
 orders:
-  - {id: O1, destination: hospital, meals: 40, diet: [diabetic, soft], deadline: "11:00", priority: 3}
+  - {id: O1, destination: hospital, meals: 40, diet: [diabetic, soft], deadline: "11:30", priority: 3}
   - {id: O2, destination: shelter_a, meals: 100, diet: [], deadline: "12:30", priority: 2}
   - {id: O3, destination: shelter_b, meals: 60, diet: [nut_free], deadline: "13:00", priority: 1}
 

@@ -36,15 +36,30 @@ ROAD = hex_rgb("#D3CFC6")
 ORDER_COLORS = [hex_rgb(c) for c in ("#B5523B", "#4A6FA5", "#C08A2E", "#6A8F5B", "#7D5C8C", "#3C8C88",
                                       "#8C6A4F", "#5E7C8A")]
 
-# station type -> (fill, outline)
+# Station colours follow HACCP colour coding used in commercial kitchens: brown for stores / root
+# vegetables, green for vegetable prep, yellow for cooked ready-to-eat food (packing), purple for
+# allergen-free. Heat zones (stove, steamer) use warm red / amber as on kitchen floor plans.
+# station type -> (fill, outline / strong colour)
 STATION_STYLE = {
-    "storage": (hex_rgb("#EFE6D8"), hex_rgb("#C9B9A0")),
-    "prep": (hex_rgb("#E3EAF3"), hex_rgb("#AFC0D5")),
-    "stove": (hex_rgb("#F4E1DC"), hex_rgb("#D6A99D")),
-    "steamer": (hex_rgb("#EFE2EC"), hex_rgb("#C9ABC2")),
-    "packaging": (hex_rgb("#E2EEE6"), hex_rgb("#A5C4AF")),
-    "dispatch": (hex_rgb("#F3EBD3"), hex_rgb("#D2BD86")),
+    "storage": (hex_rgb("#EAD9C6"), hex_rgb("#B98B5E")),
+    "prep": (hex_rgb("#DCEBD8"), hex_rgb("#5E9E5A")),
+    "stove": (hex_rgb("#F6D9CF"), hex_rgb("#D0593A")),
+    "steamer": (hex_rgb("#F7E3C4"), hex_rgb("#D98E2B")),
+    "packaging": (hex_rgb("#F6EDC2"), hex_rgb("#C9A51E")),
+    "dispatch": (hex_rgb("#DDE5EA"), hex_rgb("#5F7A8C")),
 }
+STATION_NAME = {"storage": "Storage shelf", "prep": "Prep counter", "stove": "Stove", "steamer": "Steamer",
+                "packaging": "Packing table", "dispatch": "Dispatch door"}
+ZONE_NAME = {"storage": "Storage zone", "prep": "Preparation zone", "stove": "Cooking zone",
+             "steamer": "Cooking zone", "packaging": "Packing zone", "dispatch": "Dispatch"}
+ALLERGEN_FREE = hex_rgb("#7B5EA7")  # HACCP purple
+
+
+def mix(a, b, t: float):
+    """Blend colour a towards b by t (0..1)."""
+    return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
+
+
 FAILED_STYLE = (hex_rgb("#ECEAE6"), hex_rgb("#C9C5BE"))
 
 _FONTS: dict = {}

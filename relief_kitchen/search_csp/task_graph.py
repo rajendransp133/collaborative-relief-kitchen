@@ -22,8 +22,11 @@ class TaskNode:
     meals: int
     skill: str
     station_types: set[str]
-    minutes: int
+    minutes: int  # total time the agent and station are busy = transfer_minutes + work_minutes
     preds: list[str] = field(default_factory=list)
+    transfer_minutes: int = 0  # carrying the batch in from the previous station (hand-off)
+    work_minutes: int = 0
+    carry_out_minutes: int = 0  # last stage only: carrying the packed meals to the dispatch door
 
 
 @dataclass
@@ -72,7 +75,7 @@ def earliest_starts(g: TaskGraph, release: int = 0) -> dict[str, int]:
 
 
 def critical_path_minutes(g: TaskGraph) -> int:
-    """Length of the longest dependency chain to dispatch (minutes) - the critical path."""
+    """Length of the longest dependency chain until the meals are at the door (minutes)."""
     return earliest_starts(g, 0)[g.dispatch]
 
 
@@ -83,20 +86,29 @@ def batch_sizes(meals: int, batch_size: int) -> list[int]:
     return [base + (1 if i < extra else 0) for i in range(n)]
 
 
-def build_task_graph(order: Order, stages: list[Stage], variants: list[Recipe], batch_size: int) -> TaskGraph:
+def build_task_graph(order: Order, stages: list[Stage], variants: list[Recipe], batch_size: int,
+                     transfer: dict[str, int] | None = None) -> TaskGraph:
     """Variants are the order's diet-compatible recipes; a stage's station types are the union over
-    variants and its duration the maximum, so the graph is valid whichever variant the CSP picks."""
+    variants and its duration the maximum, so the graph is valid whichever variant the CSP picks.
+
+    `transfer[stage]` is the carry-in budget in minutes for that stage (walk to the previous
+    station, pick the batch up, bring it over); `transfer["dispatch"]` is the walk from packing to
+    the dispatch door, added to the last stage. Every task's duration is carry-in + work (+ carry-out)."""
+    transfer = transfer or {}
     nodes: dict[str, TaskNode] = {}
     sizes = batch_sizes(order.meals, batch_size)
     packs = []
+    sinks = {s.name for s in stages} - {p for s in stages for p in s.after}
     for b, meals in enumerate(sizes):
         for st in stages:
             types = {recipe_station(r, st) for r in variants} or {st.station_type}
-            minutes = max([recipe_minutes(r, st) for r in variants] or [st.minutes])
+            work = max([recipe_minutes(r, st) for r in variants] or [st.minutes])
+            carry_in = transfer.get(st.name, 0)
+            carry_out = transfer.get("dispatch", 0) if st.name in sinks else 0
             tid = f"{order.id}.b{b + 1}.{st.name}"
-            nodes[tid] = TaskNode(tid, order.id, b + 1, st.name, meals, st.skill, types, minutes,
-                                  preds=[f"{order.id}.b{b + 1}.{p}" for p in st.after])
-        sinks = {s.name for s in stages} - {p for s in stages for p in s.after}
+            nodes[tid] = TaskNode(tid, order.id, b + 1, st.name, meals, st.skill, types, carry_in + work + carry_out,
+                                  preds=[f"{order.id}.b{b + 1}.{p}" for p in st.after],
+                                  transfer_minutes=carry_in, work_minutes=work, carry_out_minutes=carry_out)
         packs += [f"{order.id}.b{b + 1}.{s}" for s in sorted(sinks)]
     did = f"{order.id}.dispatch"
     nodes[did] = TaskNode(did, order.id, 0, "dispatch", order.meals, "drive", {"vehicle"}, 0, preds=packs)

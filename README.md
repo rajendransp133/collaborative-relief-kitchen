@@ -80,7 +80,7 @@ flowchart TB
 > [!TIP]
 > **M1 is implemented.** See [docs/module1.md](docs/module1.md) for the formulation, algorithms and scenarios. To try it, run `python -m relief_kitchen.viz` (Pygame visualiser) or `python -m relief_kitchen.run --scenario configs/scenarios/infeasible.yaml` (text report).
 >
-> ![Module 1 visualiser](docs/img/demand_surge.png)
+> ![Module 1 visualiser: kitchen page](docs/img/kitchen.png)
 
 ### M2 — Planning
 
@@ -266,7 +266,7 @@ Module 1 (available now):
 # Text report: routes, CSP schedule, MAPF stats and infeasibility diagnosis for each timeline step
 python -m relief_kitchen.run --scenario configs/scenarios/infeasible.yaml
 
-# Pygame visualiser (kitchen floor, road network, schedule, diagnosis)
+# Pygame visualiser: Kitchen, Delivery and Overview pages with hover details
 python -m relief_kitchen.viz --scenario configs/scenarios/road_closure.yaml
 
 # Tests

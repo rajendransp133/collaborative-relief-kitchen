@@ -24,9 +24,10 @@ import math
 from dataclasses import dataclass
 
 from ..env.entities import Order, Recipe, agent_available, recipe_satisfies, recipe_station
-from ..env.kitchen_grid import shared_access_pairs, stations_of
+from ..env.kitchen_grid import HANDLING_MINUTES, WALK_SECONDS, shared_access_pairs, stations_of
 from ..env.scenario import Scenario, clock, total_stock
 from .csp import CSP, Constraint, SolveResult, constraint, solve, subset
+from .astar import bfs_distances
 from .locate import rank_stations
 from .routing import Route, depot_routes
 from .task_graph import TaskGraph, build_task_graph, graph_tasks, topological_order
@@ -116,6 +117,10 @@ class ScheduledTask:
     station: str
     start: int  # minutes after the scenario start
     end: int
+    carry_in: int = 0  # first minutes: fetching the batch from the previous station
+    work: int = 0  # then the actual cooking / prep / packing
+    carry_out: int = 0  # last stage only: final minutes carrying meals to the dispatch door
+    recipe: str = ""
 
 
 @dataclass
@@ -174,7 +179,8 @@ def decode(m: KitchenModel, result: SolveResult) -> Allocation:
     S, a = m.scenario.slot_minutes, result.solution
     variants = {o.id: a[f"{o.id}.variant"] for o in m.orders}
     tasks = sorted((ScheduledTask(node.id, o.id, node.batch, node.stage, node.meals, *a[node.id][:2],
-                                  a[node.id][2] * S, (a[node.id][2] + m.dur[node.id]) * S)
+                                  a[node.id][2] * S, (a[node.id][2] + m.dur[node.id]) * S,
+                                  node.transfer_minutes, node.work_minutes, node.carry_out_minutes, variants[o.id])
                     for o in m.orders for node in graph_tasks(m.graphs[o.id])),
                    key=lambda t: (t.start, t.order, t.batch))
     deliveries = []
@@ -197,6 +203,44 @@ def cook_stage(sc: Scenario) -> str:
     return sc.stages[-1].name
 
 
+def stage_station_types(sc: Scenario, stage) -> set[str]:
+    """Every station type a stage can use, over all recipes (e.g. cook: stove or steamer)."""
+    return {stage.station_type} | {recipe_station(r, stage) for r in sc.recipes.values()}
+
+
+def transfer_budgets(sc: Scenario) -> dict[str, int]:
+    """Carry-in time per stage, in minutes: the worst case of
+    walk(agent home -> previous station) + walk(previous station -> this station) + handling.
+
+    The first stage walks from home to the shelf; "dispatch" is the walk from packing to the door.
+    Walk times come from BFS distances on the floor grid (WALK_SECONDS per step)."""
+    grid = sc.kitchen
+    homes = [a.home for a in sc.agents.values()]
+    cells = lambda types: [st.access for st in grid.stations.values() if st.type in types]  # noqa: E731
+    dist_from = {}
+
+    def walk(a, b) -> float:
+        if a not in dist_from:
+            dist_from[a] = bfs_distances(grid, a)
+        return dist_from[a].get(b, 0) * WALK_SECONDS / 60
+
+    budgets: dict[str, int] = {}
+    for stage in sc.stages:
+        here = cells(stage_station_types(sc, stage))
+        prev_types = set().union(*(stage_station_types(sc, p) for p in sc.stages if p.name in stage.after))
+        if not prev_types:
+            worst = max(walk(h, c) for h in homes for c in here)
+        else:
+            worst = max(walk(h, p) + walk(p, c) for h in homes for p in cells(prev_types) for c in here)
+        budgets[stage.name] = math.ceil(worst + HANDLING_MINUTES)
+    last = sc.stages[-1]
+    door = cells({"dispatch"})
+    if door:
+        budgets["dispatch"] = math.ceil(max(walk(k, d) for k in cells(stage_station_types(sc, last)) for d in door)
+                                        + HANDLING_MINUTES)
+    return budgets
+
+
 def effective_batch_size(sc: Scenario, variants: list[Recipe]) -> int:
     """Cap the batch size at the biggest *working* cooking station: if the large stoves fail, the
     order is split into smaller batches that the remaining stoves can take."""
@@ -215,6 +259,7 @@ def build_model(sc: Scenario, orders: list[Order]) -> KitchenModel:
     stations = sorted(sc.kitchen.stations.values(), key=lambda x: x.id)
     routes, relaxed = depot_routes(sc.roads), depot_routes(sc.roads, include_closed=True)
     rank = {o.id: i for i, o in enumerate(sorted(orders, key=lambda o: (-o.priority, o.deadline)))}
+    transfers = transfer_budgets(sc)
     domains: dict[str, list] = {}
     priority: dict[str, tuple] = {}
     graphs: dict[str, TaskGraph] = {}
@@ -222,7 +267,8 @@ def build_model(sc: Scenario, orders: list[Order]) -> KitchenModel:
 
     for o in orders:
         compat = compatible_variants(sc, o)
-        g = build_task_graph(o, sc.stages, compat or list(sc.recipes.values()), effective_batch_size(sc, compat))
+        g = build_task_graph(o, sc.stages, compat or list(sc.recipes.values()), effective_batch_size(sc, compat),
+                             transfers)
         graphs[o.id] = g
         # every recipe is in the domain; the dietary constraint (node consistency) removes the unsafe ones
         domains[f"{o.id}.variant"], priority[f"{o.id}.variant"] = list(sc.recipes), (rank[o.id],)
@@ -290,6 +336,7 @@ def order_constraints(sc: Scenario, orders, graphs, dur, routes, travel) -> list
             out += [precedence(p, t, dur[p], o.id) for p in node.preds]
 
         disp = g.dispatch
+        # the last stage ends with the packed meals at the dispatch door (carry-out in its duration)
         out += [precedence(p, disp, dur[p], o.id) for p in g.nodes[disp].preds]
         dest = sc.roads.places[o.destination].label
         out += [

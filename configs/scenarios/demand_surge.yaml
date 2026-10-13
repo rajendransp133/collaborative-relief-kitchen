@@ -7,8 +7,8 @@ description: >
 events:
   - {kind: demand_surge, order: O2, extra: 80, label: "Shelter A reports 80 more people"}
   - kind: add_order
-    label: "Urgent order: 60 soft meals for the hospital by 10:40"
-    order: {id: O4, destination: hospital, meals: 60, diet: [soft], deadline: "10:40", priority: 3}
+    label: "Urgent order: 60 soft meals for the hospital by 11:15"
+    order: {id: O4, destination: hospital, meals: 60, diet: [soft], deadline: "11:15", priority: 3}
   - kind: add_order
     label: "Stadium Shelter C asks for 120 meals by 11:30"
     order: {id: O5, destination: shelter_c, meals: 120, diet: [], deadline: "11:30", priority: 1}

@@ -26,7 +26,7 @@ from ..env.entities import recipe_station
 from ..env.kitchen_grid import stations_of
 from ..env.road_network import closed_roads
 from ..env.scenario import Scenario, clock, total_stock
-from .allocation import build_model, compatible_variants, effective_batch_size, solve_model
+from .allocation import build_model, compatible_variants, effective_batch_size, solve_model, transfer_budgets
 from .routing import astar_route
 from .task_graph import build_task_graph, critical_path_minutes
 
@@ -150,7 +150,7 @@ def direct_checks(sc: Scenario, order: Order, accepted: list[Order], hints: dict
     # time: lower bound on arrival = release + longest task chain + fastest possible drive
     drive_route = route or astar_route(sc.roads, sc.roads.depot, order.destination, include_closed=True)
     if drive_route is not None:
-        g = build_task_graph(order, sc.stages, recipes, effective_batch_size(sc, recipes))
+        g = build_task_graph(order, sc.stages, recipes, effective_batch_size(sc, recipes), transfer_budgets(sc))
         chain = critical_path_minutes(g)
         drive = drive_route.minutes / max(v.speed for v in sc.vehicles.values())
         earliest = order.release + chain + drive

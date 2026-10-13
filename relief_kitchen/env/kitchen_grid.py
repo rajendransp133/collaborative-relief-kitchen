@@ -18,6 +18,9 @@ from dataclasses import dataclass, field
 from .entities import Cell, Station
 
 STATION_CHARS = {"S": "storage", "P": "prep", "C": "stove", "T": "steamer", "K": "packaging", "D": "dispatch"}
+WALK_SECONDS = 20  # time for one grid step (also the animation step)
+HANDLING_MINUTES = 1  # picking a batch up or putting it down
+
 ID_PREFIX = {"storage": "S", "prep": "P", "stove": "C", "steamer": "T", "packaging": "K", "dispatch": "D"}
 
 

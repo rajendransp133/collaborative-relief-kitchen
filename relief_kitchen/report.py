@@ -5,6 +5,7 @@ from __future__ import annotations
 from .env.road_network import closed_roads
 from .env.scenario import clock, total_stock
 from .search_csp.diagnosis import summary
+from .search_csp.kitchen_flow import stock_at
 from .search_csp.pipeline import M1Result
 
 
@@ -47,13 +48,19 @@ def format_result(r: M1Result) -> str:
                                  "deadline", "on time"]))
         out.append("")
         out.append("Kitchen schedule")
-        rows = [[t.id, t.agent, t.station, clock(sc, t.start), clock(sc, t.end), t.meals] for t in al.tasks]
-        out.append(_table(rows, ["task", "agent", "station", "start", "end", "meals"]))
+        out.append("(each task = carry-in from the previous station + work [+ carry-out to the door])")
+        rows = [[t.id, t.agent, t.station, clock(sc, t.start), clock(sc, t.end), t.meals, t.carry_in, t.work,
+                 t.carry_out or ""] for t in al.tasks]
+        out.append(_table(rows, ["task", "agent", "station", "start", "end", "meals", "carry-in", "work",
+                                 "to door"]))
         out.append("")
         out.append("Ingredient pick list (nearest shelves first, BFS from the dispatch door)")
         for oid, plan in r.ingredient_plan.items():
             picks = "; ".join(f"{ing}: " + ", ".join(f"{kg:g} kg @ {sh}" for sh, kg, _ in p) for ing, p in plan.items())
             out.append(f"  {oid}: {picks}")
+        end = stock_at(sc, r.withdrawals, 10_000)
+        out.append("Stock left at the end of the day: " + "; ".join(
+            f"{shelf} " + ", ".join(f"{ing} {kg:.1f}" for ing, kg in left.items()) for shelf, left in end.items()))
         out.append("Nearest working equipment: " + ", ".join(f"{k} {v}" for k, v in r.nearest.items()))
         out.append("")
         st = al.result.stats

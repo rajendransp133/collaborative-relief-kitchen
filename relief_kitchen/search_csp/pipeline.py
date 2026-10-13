@@ -10,6 +10,7 @@ from ..env.kitchen_grid import stations_of
 from ..env.scenario import Scenario, apply_event, load_scenario
 from .allocation import Allocation, build_model, decode, solve_model
 from .diagnosis import Diagnosis, diagnose_order, summary
+from .kitchen_flow import Withdrawal, stock_withdrawals
 from .locate import locate_ingredients, nearest_station
 from .motion import KitchenMotion, plan_kitchen_motion
 from .routing import Route, depot_routes
@@ -28,6 +29,7 @@ class M1Result:
     nearest: dict[str, str] = field(default_factory=dict)
     log: list[str] = field(default_factory=list)
     seconds: float = 0.0
+    withdrawals: list[Withdrawal] = field(default_factory=list)  # stock taken from shelves over the day
 
 
 def solve_scenario(sc: Scenario, label: str = "plan") -> M1Result:
@@ -70,8 +72,9 @@ def solve_scenario(sc: Scenario, label: str = "plan") -> M1Result:
         for stype in ("storage", "prep", "stove", "steamer", "packaging"):
             hit = nearest_station(sc.kitchen, centre, stype)
             nearest[stype] = f"{hit.station.id} ({hit.distance} steps)" if hit else "none working"
+    withdrawals = stock_withdrawals(sc, alloc) if alloc else []
     return M1Result(sc, label, accepted, alloc, diagnoses, depot_routes(sc.roads), motion, ingredient_plan,
-                    nearest, log, time.perf_counter() - t0)
+                    nearest, log, time.perf_counter() - t0, withdrawals)
 
 
 def run_timeline(path: str) -> list[M1Result]:

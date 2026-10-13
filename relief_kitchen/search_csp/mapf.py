@@ -8,11 +8,13 @@ reserved moves as obstacles. Two kinds of collision are ruled out:
     edge conflict    two agents swap cells between t and t+1
 
 The method is simple and fast, but not complete: a bad agent order can leave a later agent with no
-path. Agents that stay put are planned first, which avoids most such cases in a kitchen.
+path. Agents that stay put are planned first, which avoids most such cases in a kitchen, and
+`plan_with_restarts` retries a few other orders when one fails ("random restarts").
 """
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 
 from ..env.entities import Cell
@@ -56,7 +58,8 @@ class MAPFResult:
 
 def prioritized_planning(grid: KitchenGrid, starts: dict[str, Cell], goals: dict[str, Cell],
                          order: list[str] | None = None, max_t: int = 120) -> MAPFResult:
-    order = sorted(order or list(starts), key=lambda a: starts[a] != goals[a])  # stable: stay-put first
+    if order is None:  # default: agents that stay put first, so movers route around them
+        order = sorted(starts, key=lambda a: starts[a] != goals[a])
     vertex: set[tuple[Cell, int]] = set()  # reserved (cell, t)
     edges: set[tuple[Cell, Cell, int]] = set()  # reserved moves (from, to, t)
     parked: dict[Cell, int] = {}  # cell -> time from which a planned agent sits there for good
@@ -83,3 +86,23 @@ def prioritized_planning(grid: KitchenGrid, starts: dict[str, Cell], goals: dict
                 edges.add((c, path[t + 1], t))
         parked[path[-1]] = len(path) - 1
     return MAPFResult(paths)
+
+
+def plan_with_restarts(grid: KitchenGrid, starts: dict[str, Cell], goals: dict[str, Cell],
+                       order: list[str] | None = None, tries: int = 12) -> MAPFResult:
+    """Prioritised planning; if the given agent order fails, retry with other orders.
+
+    Tried in turn: the given order, its reverse, then shuffles from a fixed seed (reproducible)."""
+    base = list(order or starts)
+    rng = random.Random(0)
+    candidates = [base, base[::-1]]
+    for _ in range(tries - 2):
+        shuffled = base[:]
+        rng.shuffle(shuffled)
+        candidates.append(shuffled)
+    res = MAPFResult({}, ok=False, note="no order worked")
+    for cand in candidates:
+        res = prioritized_planning(grid, starts, goals, order=cand)
+        if res.ok:
+            return res
+    return res

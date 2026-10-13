@@ -6,7 +6,7 @@ description: >
 
 start: "08:00"
 end: "16:00"
-slot_minutes: 10
+slot_minutes: 5
 batch_size: 50
 food_safety: {max_hold_minutes: 150}
 
@@ -97,7 +97,7 @@ orders:
   # ingredients: diabetic AND gluten-free means millet khichdi, but millet is out of stock
   - {id: O4, destination: shelter_b, meals: 50, diet: [diabetic, gluten_free], deadline: "14:00", priority: 1}
   # staff: request arrives at 13:30, after both cooks have gone home
-  - {id: O5, destination: shelter_a, meals: 60, diet: [], deadline: "15:30", priority: 1, release: "13:30"}
+  - {id: O5, destination: shelter_a, meals: 60, diet: [], deadline: "16:00", priority: 1, release: "13:30"}
   # time: 100 meals to Shelter A by 09:00 is impossible (kitchen chain alone takes 70 min)
   - {id: O6, destination: shelter_a, meals: 100, diet: [], deadline: "09:00", priority: 1}
 
