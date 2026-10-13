@@ -115,7 +115,24 @@ O5 (School Shelter A, 60 meals): staff         - everyone who can 'cook' is off 
 
 ![Road closure: hospital route moves off R7](img/road_closure.png)
 
-## 6. Running
+## 6. Code style
+
+The code is functional, with OOP used only for data:
+
+* **Records.** Entities and results (`Agent`, `Order`, `KitchenGrid`, `RoadNetwork`, `Scenario`,
+  `CSP`, `Constraint`, `Allocation`, `Diagnosis`, ...) are `@dataclass` records. They have fields
+  only: no methods and no inheritance.
+* **Functions.** All behaviour is in module-level functions, for example `neighbors(grid, cell)`,
+  `astar_route(net, a, b)`, `solve(csp)`, `decode(model, result)` and `apply_event(scenario, event)`.
+  `apply_event` returns a *new* scenario and never changes its input.
+* **Constraints are closures.** A `Constraint` record holds a `check(assignment)` function.
+  Factories such as `precedence(...)`, `disjoint(...)` and `stock_limit(...)` build it, so there is
+  no constraint class hierarchy.
+* **Contained mutation.** For speed, the backtracking search edits a private copy of the domains
+  and restores it from a trail. The CSP passed to `solve` is never modified. The Pygame window keeps
+  one `ViewState` record that is changed only by `handle_event` and `tick`.
+
+## 7. Running
 
 ```bash
 pip install -r requirements.txt

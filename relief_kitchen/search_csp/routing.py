@@ -10,7 +10,7 @@ from __future__ import annotations
 import heapq
 from dataclasses import dataclass
 
-from ..env.road_network import RoadNetwork
+from ..env.road_network import RoadNetwork, road_neighbors, straight_line
 
 
 @dataclass
@@ -22,9 +22,6 @@ class Route:
     minutes: float
     expanded: int = 0
 
-    def __bool__(self) -> bool:
-        return bool(self.nodes)
-
 
 def _search(net: RoadNetwork, origin: str, dest: str, use_heuristic: bool, include_closed: bool) -> Route | None:
     """Best-first graph search ordered by g + h; with h = 0 this is uniform-cost search."""
@@ -32,9 +29,9 @@ def _search(net: RoadNetwork, origin: str, dest: str, use_heuristic: bool, inclu
     if use_heuristic:
         # h = straight-line distance x (fewest minutes per distance unit over all roads).
         # No road beats that rate, so h never overestimates: admissible.
-        ratios = [r.minutes / max(net.straight_line(r.a, r.b), 1e-9) for r in net.roads.values()]
+        ratios = [r.minutes / max(straight_line(net, r.a, r.b), 1e-9) for r in net.roads.values()]
         scale = min(ratios) if ratios else 0.0
-    h = (lambda n: scale * net.straight_line(n, dest)) if use_heuristic else (lambda n: 0.0)
+    h = (lambda n: scale * straight_line(net, n, dest)) if use_heuristic else (lambda n: 0.0)
     g = {origin: 0.0}
     parent: dict[str, tuple[str, str]] = {}
     heap = [(h(origin), 0.0, origin)]
@@ -51,7 +48,7 @@ def _search(net: RoadNetwork, origin: str, dest: str, use_heuristic: bool, inclu
                 nodes.append(prev)
                 roads.append(rid)
             return Route(origin, dest, nodes[::-1], roads[::-1], cost, expanded)
-        for nb, minutes, rid in net.neighbors(node, include_closed=include_closed):
+        for nb, minutes, rid in road_neighbors(net, node, include_closed=include_closed):
             ng = cost + minutes
             if ng < g.get(nb, float("inf")) - 1e-9:
                 g[nb] = ng

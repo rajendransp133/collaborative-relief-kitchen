@@ -1,4 +1,4 @@
-"""Load a YAML scenario into plain Python objects and apply disruption events to it."""
+"""Scenarios: load a YAML file into records, and apply disruption events (as pure functions)."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from pathlib import Path
 import yaml
 
 from .entities import Agent, Order, Recipe, Stage, Vehicle
-from .kitchen_grid import KitchenGrid
-from .road_network import Place, Road, RoadNetwork
+from .kitchen_grid import KitchenGrid, parse_kitchen, stations_of
+from .road_network import Place, Road, RoadNetwork, make_network
 
 
 def parse_clock(value, start_clock: int) -> int:
@@ -47,63 +47,60 @@ class Scenario:
     events: list[Event] = field(default_factory=list)
     path: str = ""
 
-    def clock(self, minutes: float) -> str:
-        t = int(round(self.start_clock + minutes))
-        return f"{t // 60:02d}:{t % 60:02d}"
 
-    def copy(self) -> "Scenario":
-        return copy.deepcopy(self)
+def clock(sc: Scenario, minutes: float) -> str:
+    """Minutes after the start -> wall-clock 'HH:MM'."""
+    t = int(round(sc.start_clock + minutes))
+    return f"{t // 60:02d}:{t % 60:02d}"
 
-    def stock(self) -> dict[str, float]:
-        total: dict[str, float] = {}
-        for st in self.kitchen.stations_of("storage"):
-            for ing, kg in st.stock.items():
-                total[ing] = total.get(ing, 0.0) + kg
-        return total
 
-    # ---- disruptions ---------------------------------------------------------------------------
-    def apply(self, ev: Event) -> str:
-        p = ev.params
-        if ev.kind == "close_road":
-            self.roads.close_road(p["road"])
-            return ev.label or f"Road {p['road']} closed"
-        if ev.kind == "open_road":
-            self.roads.open_road(p["road"])
-            return ev.label or f"Road {p['road']} reopened"
-        if ev.kind == "fail_station":
-            self.kitchen.stations[p["station"]].failed = True
-            return ev.label or f"Station {p['station']} failed"
-        if ev.kind == "repair_station":
-            self.kitchen.stations[p["station"]].failed = False
-            return ev.label or f"Station {p['station']} repaired"
-        if ev.kind == "set_stock":
-            self.kitchen.stations[p["shelf"]].stock[p["ingredient"]] = float(p["kg"])
-            return ev.label or f"{p['ingredient']} on {p['shelf']} is {p['kg']} kg"
-        if ev.kind == "demand_surge":
-            order = next(o for o in self.orders if o.id == p["order"])
-            order.meals += int(p["extra"])
-            return ev.label or f"Order {order.id} +{p['extra']} meals"
-        if ev.kind == "add_order":
-            o = p["order"]
-            self.orders.append(
-                Order(
-                    id=o["id"],
-                    destination=o["destination"],
-                    meals=int(o["meals"]),
-                    diet=set(o.get("diet", [])),
-                    deadline=parse_clock(o["deadline"], self.start_clock),
-                    priority=int(o.get("priority", 1)),
-                    release=parse_clock(o.get("release", 0), self.start_clock),
-                )
-            )
-            return ev.label or f"New order {o['id']}"
-        if ev.kind == "agent_off":
-            self.agents[p["agent"]].shift_end = 0
-            return ev.label or f"Agent {p['agent']} unavailable"
-        if ev.kind == "block_cell":
-            self.kitchen.blocked.add(tuple(p["cell"]))
-            return ev.label or f"Kitchen cell {p['cell']} blocked"
+def total_stock(sc: Scenario) -> dict[str, float]:
+    """Kilograms of each ingredient summed over all shelves."""
+    total: dict[str, float] = {}
+    for st in stations_of(sc.kitchen, "storage"):
+        for ing, kg in st.stock.items():
+            total[ing] = total.get(ing, 0.0) + kg
+    return total
+
+
+# ---- disruptions -------------------------------------------------------------------------------
+def apply_event(sc: Scenario, ev: Event) -> tuple[Scenario, str]:
+    """Return a *new* scenario with the event applied, plus a one-line description.
+
+    The input scenario is never modified: the event is applied to a deep copy."""
+    new = copy.deepcopy(sc)
+    p = ev.params
+    if ev.kind in ("close_road", "open_road"):
+        new.roads.roads[p["road"]].open = ev.kind == "open_road"
+        text = f"Road {p['road']} {'reopened' if ev.kind == 'open_road' else 'closed'}"
+    elif ev.kind in ("fail_station", "repair_station"):
+        new.kitchen.stations[p["station"]].failed = ev.kind == "fail_station"
+        text = f"Station {p['station']} {'failed' if ev.kind == 'fail_station' else 'repaired'}"
+    elif ev.kind == "set_stock":
+        new.kitchen.stations[p["shelf"]].stock[p["ingredient"]] = float(p["kg"])
+        text = f"{p['ingredient']} on {p['shelf']} is {p['kg']} kg"
+    elif ev.kind == "demand_surge":
+        order = next(o for o in new.orders if o.id == p["order"])
+        order.meals += int(p["extra"])
+        text = f"Order {order.id} +{p['extra']} meals"
+    elif ev.kind == "add_order":
+        new.orders.append(_parse_order(p["order"], new.start_clock))
+        text = f"New order {p['order']['id']}"
+    elif ev.kind == "agent_off":
+        new.agents[p["agent"]].shift_end = 0
+        text = f"Agent {p['agent']} unavailable"
+    elif ev.kind == "block_cell":
+        new.kitchen.blocked.add(tuple(p["cell"]))
+        text = f"Kitchen cell {p['cell']} blocked"
+    else:
         raise ValueError(f"unknown event kind {ev.kind!r}")
+    return new, ev.label or text
+
+
+def _parse_order(o: dict, start_clock: int) -> Order:
+    return Order(id=o["id"], destination=o["destination"], meals=int(o["meals"]), diet=set(o.get("diet", [])),
+                 deadline=parse_clock(o["deadline"], start_clock), priority=int(o.get("priority", 1)),
+                 release=parse_clock(o.get("release", 0), start_clock))
 
 
 def _merge(base: dict, over: dict) -> dict:
@@ -130,8 +127,8 @@ def load_scenario(path: str | Path) -> Scenario:
     clk = lambda v: parse_clock(v, start)  # noqa: E731
 
     k = data["kitchen"]
-    kitchen = KitchenGrid(k["map"], {sid: tuple(c) for sid, c in k.get("access", {}).items()})
-    for sid, cfg in k.get("stations", {}).items():
+    kitchen = parse_kitchen(k["map"], {sid: tuple(c) for sid, c in k.get("access", {}).items()})
+    for sid, cfg in k.get("stations", {}).items():  # fill in the freshly parsed station records
         st = kitchen.stations[sid]
         st.max_batch = int(cfg.get("max_batch", st.max_batch))
         st.failed = bool(cfg.get("failed", False))
@@ -164,11 +161,7 @@ def load_scenario(path: str | Path) -> Scenario:
                     main_ingredient=r.get("main", next(iter(r["per_meal"]))), overrides=r.get("overrides", {}))
         for rid, r in data["recipes"].items()
     }
-    orders = [
-        Order(id=o["id"], destination=o["destination"], meals=int(o["meals"]), diet=set(o.get("diet", [])),
-              deadline=clk(o["deadline"]), priority=int(o.get("priority", 1)), release=clk(o.get("release", 0)))
-        for o in data["orders"]
-    ]
+    orders = [_parse_order(o, start) for o in data["orders"]]
     vehicles = {
         vid: Vehicle(id=vid, capacity=int(v["capacity"]), speed=float(v.get("speed", 1.0)),
                      available_from=clk(v.get("available_from", 0)))
@@ -185,7 +178,7 @@ def load_scenario(path: str | Path) -> Scenario:
         batch_size=int(data.get("batch_size", 50)),
         max_hold=int(data.get("food_safety", {}).get("max_hold_minutes", 150)),
         kitchen=kitchen,
-        roads=RoadNetwork(places, roads),
+        roads=make_network(places, roads),
         agents=agents,
         stages=stages,
         recipes=recipes,

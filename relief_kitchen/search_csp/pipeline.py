@@ -6,9 +6,10 @@ import time
 from dataclasses import dataclass, field
 
 from ..env.entities import Order
-from ..env.scenario import Scenario, load_scenario
-from .allocation import Allocation, build_model
-from .diagnosis import Diagnosis, diagnose_order
+from ..env.kitchen_grid import stations_of
+from ..env.scenario import Scenario, apply_event, load_scenario
+from .allocation import Allocation, build_model, decode, solve_model
+from .diagnosis import Diagnosis, diagnose_order, summary
 from .locate import locate_ingredients, nearest_station
 from .motion import KitchenMotion, plan_kitchen_motion
 from .routing import Route, depot_routes
@@ -44,7 +45,7 @@ def solve_scenario(sc: Scenario, label: str = "plan") -> M1Result:
     log: list[str] = []
     for order in sorted(sc.orders, key=lambda o: (-o.priority, o.deadline, o.id)):
         model = build_model(sc, accepted + [order])
-        res = model.solve(hints=hints)
+        res = solve_model(model, hints=hints)
         if res.ok:
             accepted.append(order)
             hints, best = res.solution, (model, res)
@@ -53,14 +54,14 @@ def solve_scenario(sc: Scenario, label: str = "plan") -> M1Result:
         else:
             d = diagnose_order(sc, order, accepted, hints)
             diagnoses[order.id] = d
-            log.append(f"reject {order.id} ({res.status}): {d.summary()}")
+            log.append(f"reject {order.id} ({res.status}): {summary(d)}")
 
-    alloc = best[0].decode(best[1]) if best else None
+    alloc = decode(*best) if best else None
     motion = plan_kitchen_motion(sc, alloc) if alloc else None
     ingredient_plan, nearest = {}, {}
     if alloc:
         # pick lists: nearest shelves first, measured by BFS from the dispatch door
-        door = sc.kitchen.stations_of("dispatch")
+        door = stations_of(sc.kitchen, "dispatch")
         origin = door[0].access if door else next(iter(sc.agents.values())).home
         for o in accepted:
             r = sc.recipes[alloc.variants[o.id]]
@@ -78,7 +79,6 @@ def run_timeline(path: str) -> list[M1Result]:
     sc = load_scenario(path)
     results = [solve_scenario(sc, label="initial plan")]
     for ev in sc.events:
-        sc = sc.copy()
-        text = sc.apply(ev)
+        sc, text = apply_event(sc, ev)
         results.append(solve_scenario(sc, label=f"after: {text}"))
     return results

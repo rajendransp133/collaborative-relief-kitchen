@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from ..env.entities import Order, Recipe, Stage
+from ..env.entities import Order, Recipe, Stage, recipe_minutes, recipe_station
 
 
 @dataclass
@@ -32,44 +32,48 @@ class TaskGraph:
     nodes: dict[str, TaskNode]
     dispatch: str  # id of the dispatch node
 
-    def edges(self) -> list[tuple[str, str]]:
-        return [(p, n.id) for n in self.nodes.values() for p in n.preds]
 
-    def topological_order(self) -> list[str]:
-        """Kahn's algorithm: repeatedly emit a node whose predecessors have all been emitted."""
-        indeg = {n: len(self.nodes[n].preds) for n in self.nodes}
-        succ: dict[str, list[str]] = {n: [] for n in self.nodes}
-        for u, v in self.edges():
-            succ[u].append(v)
-        ready = sorted(n for n, d in indeg.items() if d == 0)
-        out = []
-        while ready:
-            n = ready.pop(0)
-            out.append(n)
-            for m in succ[n]:
-                indeg[m] -= 1
-                if indeg[m] == 0:
-                    ready.append(m)
-        if len(out) != len(self.nodes):
-            raise ValueError("task graph has a cycle")
-        return out
+def edges(g: TaskGraph) -> list[tuple[str, str]]:
+    return [(p, n.id) for n in g.nodes.values() for p in n.preds]
 
-    def earliest_starts(self, release: int = 0) -> dict[str, int]:
-        """ASAP start of each task with unlimited staff and stations: in topological order,
-        start = max(release, end of every predecessor). A lower bound on any real schedule."""
-        est: dict[str, int] = {}
-        for n in self.topological_order():
-            node = self.nodes[n]
-            est[n] = max([release] + [est[p] + self.nodes[p].minutes for p in node.preds])
-        return est
 
-    def critical_path_minutes(self) -> int:
-        """Length of the longest dependency chain to dispatch (minutes) - the critical path."""
-        est = self.earliest_starts(0)
-        return est[self.dispatch]
+def graph_tasks(g: TaskGraph) -> list[TaskNode]:
+    """Kitchen tasks of the graph (everything except the dispatch node)."""
+    return [n for n in g.nodes.values() if n.id != g.dispatch]
 
-    def tasks(self) -> list[TaskNode]:
-        return [n for n in self.nodes.values() if n.id != self.dispatch]
+
+def topological_order(g: TaskGraph) -> list[str]:
+    """Kahn's algorithm: repeatedly emit a node whose predecessors have all been emitted."""
+    indeg = {n: len(g.nodes[n].preds) for n in g.nodes}
+    succ: dict[str, list[str]] = {n: [] for n in g.nodes}
+    for u, v in edges(g):
+        succ[u].append(v)
+    ready = sorted(n for n, d in indeg.items() if d == 0)
+    out = []
+    while ready:
+        n = ready.pop(0)
+        out.append(n)
+        for m in succ[n]:
+            indeg[m] -= 1
+            if indeg[m] == 0:
+                ready.append(m)
+    if len(out) != len(g.nodes):
+        raise ValueError("task graph has a cycle")
+    return out
+
+
+def earliest_starts(g: TaskGraph, release: int = 0) -> dict[str, int]:
+    """ASAP start of each task with unlimited staff and stations: in topological order,
+    start = max(release, end of every predecessor). A lower bound on any real schedule."""
+    est: dict[str, int] = {}
+    for n in topological_order(g):
+        est[n] = max([release] + [est[p] + g.nodes[p].minutes for p in g.nodes[n].preds])
+    return est
+
+
+def critical_path_minutes(g: TaskGraph) -> int:
+    """Length of the longest dependency chain to dispatch (minutes) - the critical path."""
+    return earliest_starts(g, 0)[g.dispatch]
 
 
 def batch_sizes(meals: int, batch_size: int) -> list[int]:
@@ -87,8 +91,8 @@ def build_task_graph(order: Order, stages: list[Stage], variants: list[Recipe], 
     packs = []
     for b, meals in enumerate(sizes):
         for st in stages:
-            types = {r.stage_station(st) for r in variants} or {st.station_type}
-            minutes = max([r.stage_minutes(st) for r in variants] or [st.minutes])
+            types = {recipe_station(r, st) for r in variants} or {st.station_type}
+            minutes = max([recipe_minutes(r, st) for r in variants] or [st.minutes])
             tid = f"{order.id}.b{b + 1}.{st.name}"
             nodes[tid] = TaskNode(tid, order.id, b + 1, st.name, meals, st.skill, types, minutes,
                                   preds=[f"{order.id}.b{b + 1}.{p}" for p in st.after])

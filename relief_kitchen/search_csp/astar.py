@@ -12,7 +12,7 @@ import heapq
 from collections.abc import Callable, Iterable
 
 from ..env.entities import Cell
-from ..env.kitchen_grid import KitchenGrid
+from ..env.kitchen_grid import KitchenGrid, neighbors
 
 
 def manhattan(a: Cell, b: Cell) -> int:
@@ -48,7 +48,7 @@ def astar(grid: KitchenGrid, start: Cell, goal: Cell, stats: dict | None = None)
             if stats is not None:
                 stats["expanded"] = expanded
             return reconstruct(parents, cell)
-        for n in grid.neighbors(cell):
+        for n in neighbors(grid, cell):
             ng = cost + 1
             if ng < g.get(n, 1 << 30):
                 g[n] = ng
@@ -66,7 +66,7 @@ def bfs_distances(grid: KitchenGrid, source: Cell) -> dict[Cell, int]:
     while frontier:
         nxt = []
         for cell in frontier:
-            for n in grid.neighbors(cell):
+            for n in neighbors(grid, cell):
                 if n not in dist:
                     dist[n] = dist[cell] + 1
                     nxt.append(n)
@@ -106,7 +106,7 @@ def space_time_astar(
             return [c for c, _ in reconstruct(parents, (cell, t))]
         if t >= max_t:
             continue
-        moves: Iterable[Cell] = [cell, *grid.neighbors(cell)]
+        moves: Iterable[Cell] = [cell, *neighbors(grid, cell)]
         for n in moves:
             nt = t + 1
             if n not in h or (n, nt) in seen:

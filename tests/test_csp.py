@@ -1,23 +1,24 @@
-from relief_kitchen.search_csp.csp import CSP, FnConstraint, solve
+from relief_kitchen.search_csp.csp import CSP, constraint, solve, violated
 
 AUSTRALIA = {"WA": ["NT", "SA"], "NT": ["SA", "Q"], "SA": ["Q", "NSW", "V"], "Q": ["NSW"], "NSW": ["V"]}
 
 
+def make_csp(domains: dict, constraints: list) -> CSP:
+    return CSP(domains, constraints, {})
+
+
 def colouring(colours):
-    csp = CSP()
-    for r in ["WA", "NT", "SA", "Q", "NSW", "V", "T"]:
-        csp.add_variable(r, colours)
-    for a, ns in AUSTRALIA.items():
-        for b in ns:
-            csp.add(FnConstraint((a, b), lambda x, y: x != y, "equipment", f"{a} != {b}"))
-    return csp
+    regions = ["WA", "NT", "SA", "Q", "NSW", "V", "T"]
+    return make_csp({r: list(colours) for r in regions},
+                    [constraint((a, b), lambda x, y: x != y, "equipment", f"{a} != {b}")
+                     for a, ns in AUSTRALIA.items() for b in ns])
 
 
 def test_map_colouring_solved():
     csp = colouring(["red", "green", "blue"])
     res = solve(csp)
     assert res.ok
-    assert csp.violated(res.solution) == []
+    assert violated(csp, res.solution) == []
 
 
 def test_map_colouring_two_colours_infeasible():
@@ -26,20 +27,23 @@ def test_map_colouring_two_colours_infeasible():
 
 
 def test_unary_wipeout_is_reported():
-    csp = CSP()
-    csp.add_variable("x", [1, 2, 3])
-    c = csp.add(FnConstraint(("x",), lambda v: v > 5, "time", "x > 5"))
-    res = solve(csp)
+    c = constraint(("x",), lambda v: v > 5, "time", "x > 5")
+    res = solve(make_csp({"x": [1, 2, 3]}, [c]))
     assert res.status == "infeasible" and res.wipeout is c
 
 
 def test_ac3_prunes_before_search():
     # x < y < z over {1, 2, 3}: AC-3 alone leaves exactly one value per variable
-    csp = CSP()
-    for v in "xyz":
-        csp.add_variable(v, [1, 2, 3])
-    csp.add(FnConstraint(("x", "y"), lambda a, b: a < b, "time", "x < y"))
-    csp.add(FnConstraint(("y", "z"), lambda a, b: a < b, "time", "y < z"))
+    csp = make_csp({v: [1, 2, 3] for v in "xyz"},
+                   [constraint(("x", "y"), lambda a, b: a < b, "time", "x < y"),
+                    constraint(("y", "z"), lambda a, b: a < b, "time", "y < z")])
     res = solve(csp)
     assert res.solution == {"x": 1, "y": 2, "z": 3}
     assert res.stats.backtracks == 0 and res.stats.pruned == 6
+
+
+def test_solver_does_not_mutate_the_csp():
+    csp = colouring(["red", "green", "blue"])
+    before = {v: list(d) for v, d in csp.domains.items()}
+    solve(csp)
+    assert csp.domains == before

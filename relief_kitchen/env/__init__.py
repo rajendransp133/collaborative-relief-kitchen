@@ -1,11 +1,11 @@
-"""Simulated environment: kitchen grid, road network, entities and scenarios."""
+"""Simulated environment: kitchen grid, road network, entities and scenarios (records + functions)."""
 
 from .entities import Agent, Order, Recipe, Stage, Station, Vehicle
 from .kitchen_grid import KitchenGrid
 from .road_network import Place, Road, RoadNetwork
-from .scenario import Event, Scenario, load_scenario
+from .scenario import Event, Scenario, apply_event, clock, load_scenario, total_stock
 
 __all__ = [
     "Agent", "Order", "Recipe", "Stage", "Station", "Vehicle", "KitchenGrid", "Place", "Road",
-    "RoadNetwork", "Event", "Scenario", "load_scenario",
+    "RoadNetwork", "Event", "Scenario", "apply_event", "clock", "load_scenario", "total_stock",
 ]

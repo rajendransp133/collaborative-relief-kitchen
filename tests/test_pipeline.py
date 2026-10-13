@@ -1,4 +1,6 @@
 from conftest import SCENARIOS
+from relief_kitchen.env.entities import recipe_satisfies
+from relief_kitchen.env.scenario import total_stock
 from relief_kitchen.search_csp.pipeline import run_timeline
 
 
@@ -19,12 +21,20 @@ def test_rice_shortage_substitutes_safe_menu():
     *_, last = run_timeline(str(SCENARIOS / "rice_shortage.yaml"))
     rice = sum(last.scenario.recipes[v].per_meal.get("rice", 0) * o.meals
                for o in last.accepted for v in [last.allocation.variants[o.id]])
-    assert rice <= last.scenario.stock()["rice"] + 1e-6
+    assert rice <= total_stock(last.scenario)["rice"] + 1e-6
     for o in last.accepted:
-        assert last.scenario.recipes[last.allocation.variants[o.id]].satisfies(o.diet)
+        assert recipe_satisfies(last.scenario.recipes[last.allocation.variants[o.id]], o.diet)
 
 
 def test_kitchen_motion_is_collision_free():
     for name in ("base.yaml", "dietary.yaml"):
         for r in run_timeline(str(SCENARIOS / name)):
             assert r.motion.collisions == 0 and r.motion.failures == 0
+
+
+def test_events_do_not_modify_the_original_scenario():
+    from relief_kitchen.env import apply_event, load_scenario
+
+    sc = load_scenario(SCENARIOS / "road_closure.yaml")
+    new, _ = apply_event(sc, sc.events[0])
+    assert sc.roads.roads["R7"].open and not new.roads.roads["R7"].open

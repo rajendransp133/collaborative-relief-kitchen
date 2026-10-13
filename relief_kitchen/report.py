@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from .env.road_network import closed_roads
+from .env.scenario import clock, total_stock
+from .search_csp.diagnosis import summary
 from .search_csp.pipeline import M1Result
 
 
@@ -14,10 +17,10 @@ def _table(rows: list[list[str]], header: list[str]) -> str:
 def format_result(r: M1Result) -> str:
     sc = r.scenario
     out = [f"=== {sc.name}: {r.label} ===", ""]
-    closed = sc.roads.closed_roads()
+    closed = closed_roads(sc.roads)
     failed = [s.id for s in sc.kitchen.stations.values() if s.failed]
     out.append(f"Closed roads: {', '.join(closed) or 'none'}   Failed stations: {', '.join(failed) or 'none'}")
-    out.append("Stock (kg): " + ", ".join(f"{k} {v:g}" for k, v in sorted(sc.stock().items())))
+    out.append("Stock (kg): " + ", ".join(f"{k} {v:g}" for k, v in sorted(total_stock(sc).items())))
     out.append("")
 
     out.append("Delivery routes (A* on the road graph)")
@@ -38,13 +41,13 @@ def format_result(r: M1Result) -> str:
         for d in al.deliveries:
             o = next(o for o in sc.orders if o.id == d.order)
             rows.append([o.id, sc.roads.places[o.destination].label, o.meals, ",".join(sorted(o.diet)) or "-",
-                         sc.recipes[d.recipe].name, d.vehicle, sc.clock(d.depart), sc.clock(d.arrive),
-                         sc.clock(o.deadline), "yes" if d.arrive <= o.deadline else "LATE"])
+                         sc.recipes[d.recipe].name, d.vehicle, clock(sc, d.depart), clock(sc, d.arrive),
+                         clock(sc, o.deadline), "yes" if d.arrive <= o.deadline else "LATE"])
         out.append(_table(rows, ["order", "destination", "meals", "diet", "menu", "vehicle", "leaves", "arrives",
                                  "deadline", "on time"]))
         out.append("")
         out.append("Kitchen schedule")
-        rows = [[t.id, t.agent, t.station, sc.clock(t.start), sc.clock(t.end), t.meals] for t in al.tasks]
+        rows = [[t.id, t.agent, t.station, clock(sc, t.start), clock(sc, t.end), t.meals] for t in al.tasks]
         out.append(_table(rows, ["task", "agent", "station", "start", "end", "meals"]))
         out.append("")
         out.append("Ingredient pick list (nearest shelves first, BFS from the dispatch door)")
@@ -64,7 +67,7 @@ def format_result(r: M1Result) -> str:
     if r.diagnoses:
         out.append("INFEASIBLE ORDERS")
         for d in r.diagnoses.values():
-            out.append(f"  {d.summary()}  [{d.mode}]")
+            out.append(f"  {summary(d)}  [{d.mode}]")
             for c in d.causes:
                 out.append(f"    - {c.category}: {c.detail}")
     else:

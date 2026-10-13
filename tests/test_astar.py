@@ -1,7 +1,9 @@
-from relief_kitchen.env.kitchen_grid import KitchenGrid
+from dataclasses import replace
+
+from relief_kitchen.env.kitchen_grid import parse_kitchen, walkable
 from relief_kitchen.search_csp.astar import astar, bfs_distances, space_time_astar
 
-GRID = KitchenGrid([
+GRID = parse_kitchen([
     "#######",
     "#.....#",
     "#.###.#",
@@ -16,18 +18,15 @@ def test_astar_shortest_path():
     assert len(path) - 1 == 6  # Manhattan distance, the wall does not force a detour here
     for a, b in zip(path, path[1:]):
         assert abs(a[0] - b[0]) + abs(a[1] - b[1]) == 1
-        assert GRID.walkable(b)
+        assert walkable(GRID, b)
 
 
 def test_astar_unreachable_and_blocked_cells():
-    g = KitchenGrid(["#####", "#.#.#", "#####"])
+    g = parse_kitchen(["#####", "#.#.#", "#####"])
     assert astar(g, (1, 1), (1, 3)) is None
-    GRID.blocked.add((1, 3))
-    try:
-        path = astar(GRID, (1, 1), (1, 5))
-        assert (1, 3) not in path and len(path) - 1 == 8  # detour round the pillar
-    finally:
-        GRID.blocked.clear()
+    spill = replace(GRID, blocked={(1, 3)})  # same kitchen, one cell blocked
+    path = astar(spill, (1, 1), (1, 5))
+    assert (1, 3) not in path and len(path) - 1 == 8  # detour round the pillar
 
 
 def test_bfs_distances_match_astar():
