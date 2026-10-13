@@ -1,4 +1,9 @@
-"""Delivery routing on the road graph: Dijkstra (uniform-cost search) and A*."""
+"""Delivery routing on the weighted road graph: uniform-cost search (Dijkstra) and A*.
+
+Edge cost = travel minutes. Closed roads are simply skipped, so after a closure we only re-run the
+search ("reroute"). `include_closed=True` ignores closures; diagnosis uses it to time a trip that
+is currently impossible.
+"""
 
 from __future__ import annotations
 
@@ -22,9 +27,11 @@ class Route:
 
 
 def _search(net: RoadNetwork, origin: str, dest: str, use_heuristic: bool, include_closed: bool) -> Route | None:
+    """Best-first graph search ordered by g + h; with h = 0 this is uniform-cost search."""
     scale = 0.0
     if use_heuristic:
-        # admissible: no road is faster per straight-line unit than the fastest one in the network
+        # h = straight-line distance x (fewest minutes per distance unit over all roads).
+        # No road beats that rate, so h never overestimates: admissible.
         ratios = [r.minutes / max(net.straight_line(r.a, r.b), 1e-9) for r in net.roads.values()]
         scale = min(ratios) if ratios else 0.0
     h = (lambda n: scale * net.straight_line(n, dest)) if use_heuristic else (lambda n: 0.0)
@@ -34,7 +41,7 @@ def _search(net: RoadNetwork, origin: str, dest: str, use_heuristic: bool, inclu
     expanded = 0
     while heap:
         _, cost, node = heapq.heappop(heap)
-        if cost > g[node] + 1e-9:
+        if cost > g[node] + 1e-9:  # stale heap entry: a cheaper path was found later
             continue
         expanded += 1
         if node == dest:

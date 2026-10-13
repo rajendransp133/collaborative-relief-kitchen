@@ -15,15 +15,14 @@ from .search_csp.pipeline import run_timeline
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description="Relief kitchen - Module 1 (search and CSP)")
     ap.add_argument("--scenario", default="configs/scenarios/base.yaml")
-    ap.add_argument("--mapf", choices=["cbs", "prioritized"], default="cbs")
     ap.add_argument("--gui", action="store_true", help="open the Pygame visualiser")
     args = ap.parse_args(argv)
     if args.gui:
         from .viz.app import main as gui_main
 
-        gui_main(["--scenario", args.scenario, "--mapf", args.mapf])
+        gui_main(["--scenario", args.scenario])
         return
-    for r in run_timeline(args.scenario, args.mapf):
+    for r in run_timeline(args.scenario):
         print(format_result(r))
         print()
 

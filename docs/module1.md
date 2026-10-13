@@ -1,157 +1,140 @@
 # Module 1: Search and Constraint Satisfaction
 
 Module 1 decides who does what, on which station, by which path, and with which vehicle. It also
-decides whether an order can be met at all, and if not, why. Everything in it is implemented from
-scratch in `relief_kitchen/search_csp/`. The only dependencies are PyYAML for scenarios and
-Pygame for the visualiser.
+decides whether each order can be met, and if not, why. All algorithms are written from scratch
+in `relief_kitchen/search_csp/`. Every technique below is either a CS 188 topic or basic graph
+theory.
 
-![Demand surge: four orders scheduled, one rejected for staff + time](img/demand_surge.png)
+![Demand surge: four orders scheduled, the stadium order rejected](img/demand_surge.png)
 
 ## 1. Graphs
 
-| Graph | Where | Nodes / edges | Used by |
-|---|---|---|---|
-| Kitchen occupancy grid | `env/kitchen_grid.py` | Floor cells, 4-connected. Shelves (`S`), prep counters (`P`), stoves (`C`), steamer (`T`), packaging (`K`) and the dispatch door (`D`) are not walkable; each is worked from an *access cell*. Cells can be blocked at run time (spills). | A\*, BFS, MAPF |
-| Road network | `env/road_network.py` | Depot, junctions, shelters and the hospital; weighted, undirected roads that can close | Dijkstra / A\* routing |
-| Task-dependency DAG | `search_csp/task_graph.py` | Per order: batches of ≤ `batch_size` meals, each running `fetch → prep → cook → pack`, and every pack feeding one `dispatch` node | Precedence constraints, critical path, time diagnosis |
+| Graph | Nodes / edges | File |
+|---|---|---|
+| Kitchen grid | Floor cells, 4-connected. Shelves `S`, prep counters `P`, stoves `C`, steamer `T`, packing tables `K` and the door `D` are not walkable; each is used from its *access cell*. | `env/kitchen_grid.py` |
+| Road network | Kitchen, junctions, shelters and the hospital; weighted by travel minutes; roads can close | `env/road_network.py` |
+| Task-dependency DAG | Per order: batches of ≤ 50 meals, each running `fetch → prep → cook → pack`. Every pack feeds one `dispatch` node. | `search_csp/task_graph.py` |
 
 ## 2. Search
 
-| Problem | Algorithm | File |
-|---|---|---|
-| Single-agent path on the floor | A\* with the Manhattan heuristic | `astar.py` |
-| Distances to every cell | Breadth-first search | `astar.py` |
-| Collision-free movement of all agents | Space-time A\* (wait action, vertex and edge reservations) as the low level for **prioritised planning** and **Conflict-Based Search** (CBS, optimal sum of costs) | `mapf.py` |
-| Turning the schedule into motion | At each slot boundary every agent's goal becomes the access cell of its current station (or its home cell). CBS moves everyone together, and the number of conflicts is checked afterwards. | `motion.py` |
-| Nearest ingredient or equipment | BFS ranking of working shelves or stations. The pick list takes ingredients from the nearest shelves until the quantity is covered. | `locate.py` |
-| Delivery routes | Dijkstra (uniform-cost search) and A\* with an admissible straight-line heuristic. Closed roads are skipped, and routes are recomputed after each closure. | `routing.py` |
+| Problem | Algorithm | CS 188 topic | File |
+|---|---|---|---|
+| Path for one agent | A\* with the Manhattan heuristic | A\* search | `astar.py` |
+| Nearest ingredient shelf or working stove | BFS distances, then sort | BFS | `locate.py` |
+| Delivery route; reroute after a closure | Uniform-cost search (Dijkstra) and A\* with a straight-line heuristic | UCS, A\*, admissible heuristics | `routing.py` |
+| Collision-free movement of all agents | Prioritised planning: agents planned one by one with A\* over (cell, time) states, avoiding cells and moves already reserved | A\* (state = cell + time) | `mapf.py`, `motion.py` |
+| Critical path of an order | Topological sort, then longest path in the DAG | Graph basics | `task_graph.py` |
 
-## 3. The allocation CSP
+Prioritised planning is fast but not complete: an unlucky agent order can block a solvable case
+(`tests/test_mapf.py` shows one). In the kitchen scenarios it always succeeds, with 0 collisions.
 
-Time is split into 10-minute slots over an 08:00–16:00 day.
+## 3. Task and resource allocation as a CSP
 
-**Variables**
+Time is split into 10-minute slots. Variables for each order `O`:
 
 | Variable | Domain |
 |---|---|
-| `O.variant` | Recipes (meal variants) |
-| `O.b<k>.<stage>` (one per batch task) | `(agent, station, start slot)` triples |
+| `O.variant` | Recipe (meal variant) |
+| `O.b<k>.<stage>` | `(agent, station, start slot)` for each batch task |
 | `O.dispatch` | `(vehicle, departure slot)` |
 
-**Constraints.** Each constraint carries a category, which is what makes the diagnosis possible.
+Packing agent, station and start into one value keeps every resource rule binary. For example:
+"if two tasks use the same stove, their time intervals do not overlap".
 
-| Category | Constraint | Arity |
-|---|---|---|
-| dietary | Chosen variant satisfies the order's diet (`diabetic`, `soft`, `infant`, `nut_free`, `gluten_free`, …) | unary |
-| ingredients | Total use of every ingredient by all chosen variants ≤ stock (global, checked on partial assignments) | n-ary |
-| ingredients | The first-stage shelf actually stocks the variant's main ingredient (ingredient location) | binary |
-| equipment | Station is working; station capacity ≥ batch size; station type suits the recipe (idli needs the steamer) | unary/binary |
-| equipment | One batch per station at a time (workspace occupancy) | binary |
-| staff | Agent has the stage's skill; task falls inside the agent's shift; one task per agent at a time | unary/binary |
-| time | Arrival = departure + travel ≤ deadline | unary |
-| transport | An open route exists; vehicle capacity ≥ meals; vehicle available; one trip per vehicle at a time | unary/binary |
-| safety | Cooked food served within `max_hold` minutes; an allergen-free batch never follows an allergenic one on the same station without a cleaning gap | binary/ternary |
-| collision | Stations that share an access cell are never worked at the same time | binary |
-| priority | A higher-priority order leaves first on a shared vehicle | binary |
-| (structure) | Task-DAG precedence, order release time, batch symmetry breaking, planning horizon. These are never relaxed. | binary/unary |
+| Category | Constraints |
+|---|---|
+| dietary | Chosen recipe satisfies the diet (`diabetic`, `soft`, `infant`, `nut_free`, `gluten_free`) |
+| ingredients | Total ingredient use ≤ stock (global); the fetch shelf stocks the recipe's main ingredient |
+| equipment | Station works; station capacity ≥ batch size; station type suits the recipe; one batch per station at a time (workspace occupancy) |
+| staff | Agent has the skill; task inside the agent's shift; one task per agent at a time |
+| time | Arrival ≤ deadline |
+| transport | An open route exists; vehicle big enough; one trip per vehicle at a time |
+| safety | Cooked food served within 150 minutes (maximum holding time) |
+| collision | Two stations reached from the same floor cell are never used at once |
+| priority | A more urgent order leaves first when sharing a vehicle |
+| structure | DAG precedence, order release time, end of day. These are facts and are never relaxed. |
 
-**Solver** (`csp.py`). The solver is generic and also solves map colouring (see the tests). It
-works in four stages:
+**Solver** (`csp.py`, generic; the tests also solve map colouring) works in three steps:
 
-1. Node consistency, then AC-3 on binary constraints. Precedence uses a bounds-based `revise`,
-   so deadlines propagate back through the whole DAG.
-2. Backtracking search with **MRV and a degree tie-break**. **LCV** is used by default; the kitchen
-   model supplies its own value order instead (earliest start, nearest station, least-loaded agent).
-3. **Forward checking**, plus bounds propagation of precedence at every node (a light form of MAC).
-4. An optional global `node_check`. The kitchen uses **energetic reasoning**: for each pool of
-   skilled agents or same-type stations, and each time window, the work that must fall inside the
-   window has to fit the pool's capacity. This is what proves "the cooks cannot finish in time"
-   without enumerating schedules.
+1. **Node consistency.** Unary constraints prune domains.
+2. **AC-3** on binary constraints. Precedence has a cheap `revise`, so earliest-start and
+   latest-start bounds flow through the DAG.
+3. **Backtracking** with **MRV** and a **degree** tie-break, plus **forward checking**.
+   - Generic problems use **LCV** for value ordering.
+   - The kitchen uses a simpler heuristic instead: earliest start, then nearest station, then
+     least-busy agent. LCV would be slow on hundreds of values per task.
+   - Variables are taken in phases: menus, then tasks, then vehicles.
 
-The kitchen model picks menus first, then vehicles and departures (latest first, so the kitchen
-has room), then tasks. A bounded improvement pass then re-schedules as a list schedule and moves
-departures as early as possible.
-
-**Order acceptance** (`pipeline.py`). Orders are added in (priority, deadline) order. Each one
-re-solves the joint CSP, warm-started from the previous solution. If an order makes the CSP
-infeasible, it is rejected and diagnosed, and the remaining orders are still served.
+**Order acceptance** (`pipeline.py`):
+- Orders are added most urgent first.
+- After each addition the CSP is re-solved, starting from the previous solution.
+- If the CSP fails (or exceeds 3000 search nodes), the order is rejected and diagnosed, and the
+  other orders are still served.
 
 ## 4. Infeasibility diagnosis (`diagnosis.py`)
 
-1. **Isolated or contention.** The order is first solved alone. If it fails alone, the cause is
-   intrinsic. If it only fails next to the accepted orders, it is contention for shared
-   resources.
-2. **QuickXplain** (Junker, 2004) runs over the order's relaxable constraint *kinds*. The
-   background is the structural constraints plus the accepted orders. It returns a **minimal
-   conflicting set**; each kind maps to a category and to a sentence built from the scenario.
-3. If a consistency check runs out of search budget, the module falls back to **correction
-   sets**: the kinds whose relaxation alone makes the order schedulable. The report then marks
-   the diagnosis "within search budget".
-4. **Bottleneck analysis** (contention only) reports the saturated resource from the accepted
-   schedule, for example *"staff who can 'cook' (Anu, Ravi) are 78% booked between 08:30 and
-   10:57; O5 needs 90 more minutes of 65 free"*.
-5. **Alternatives.** The largest meal count that still fits, and the earliest deadline at which
-   all meals fit.
+**Step 1: direct checks, one per category, without search.**
+
+| Category | Check |
+|---|---|
+| dietary | Does any recipe satisfy the diet? |
+| ingredients | Does a diet-safe recipe fit the stock left after already-accepted orders? |
+| equipment | Does every stage have a working station of the right type and size? |
+| staff | Is someone with each skill on shift after the order arrives? |
+| transport | Is there an open road, and a vehicle big enough? |
+| time | Is release + critical path + fastest drive ≤ deadline? |
+
+**Step 2: relax one category at a time.** This runs only if every check passes but the CSP still
+fails, which usually means the order competes with accepted orders. The module drops one
+category's constraints for this order and re-solves. Every category whose removal lets the order
+through is reported as a cause.
 
 Output of `configs/scenarios/infeasible.yaml`:
 
 ```text
-O2 (Stadium Shelter C, 80 meals): transport   - no open road from Kitchen to Stadium Shelter C (closed: R12, R13)
-O3 (School Shelter A, 30 meals): equipment    - steamer: T1 failed
-O6 (School Shelter A, 100 meals): time        - deadline 09:00, but the earliest arrival is 09:43 (70 min of kitchen work + 33 min drive)
-                                               > alternative: deliver all 100 meals by 10:00
-O4 (Temple Shelter B, 50 meals): ingredients + dietary - diet [diabetic, gluten_free] limits the menu to Millet khichdi; no storage shelf holds millet
-O5 (School Shelter A, 60 meals): staff        - only Anu, Ravi can 'cook'; everyone who can 'cook' is off shift (Anu until 13:00, Ravi until 13:00)
+O2 (Stadium Shelter C, 80 meals): transport    - no open road from the kitchen to Stadium Shelter C (closed: R12, R13)
+O3 (School Shelter A, 30 meals): equipment     - Idli sambar needs a steamer (T1 failed)
+O6 (School Shelter A, 100 meals): time         - deadline 09:00, but the earliest possible arrival is 09:43 (70 min of kitchen work + 33 min drive)
+O4 (Temple Shelter B, 50 meals): ingredients   - diet [diabetic, gluten_free] allows only Millet khichdi - no shelf holds millet
+O5 (School Shelter A, 60 meals): staff         - everyone who can 'cook' is off shift after the order arrives at 13:30
 ```
 
 ![Infeasible orders with their cause categories](img/infeasible.png)
 
-## 5. Scenarios
+## 5. Scenarios (`configs/scenarios/`)
 
-| File | README event | What happens |
-|---|---|---|
-| `base.yaml` | 1 | 200 meals: hospital (diabetic and soft), Shelter A, Shelter B (nut-free) |
-| `demand_surge.yaml` | 2, 7 | +80 people at Shelter A, an urgent hospital order, then a stadium order that no longer fits (staff + time) |
-| `stove_failure.yaml` | 3 | C2, then C1, fail. Batches shrink to the small stove and the steamer, and every order is still served |
-| `rice_shortage.yaml` | 4 | Rice drops to 12 kg. The CSP substitutes millet khichdi or roti and still respects every diet |
-| `road_closure.yaml` | 5 | R7, then R8, close. A\* reroutes, and ETAs and vehicle choices update |
-| `dietary.yaml` | 6 | Allergen-free, diabetic and infant meals, with allergen separation on shared stations |
-| `infeasible.yaml` | 8 | One rejected order per cause category |
+| File | What happens |
+|---|---|
+| `base.yaml` | 200 meals: hospital (diabetic and soft), Shelter A, Shelter B (nut-free) |
+| `demand_surge.yaml` | +80 people at Shelter A, an urgent hospital order, then a stadium order that no longer fits |
+| `stove_failure.yaml` | Stoves C2, then C1, fail. Batches shrink to fit the remaining stoves and every order is still served |
+| `rice_shortage.yaml` | Rice drops to 12 kg. The CSP picks other diet-safe recipes |
+| `road_closure.yaml` | R7, then R8, close. A\* reroutes and arrival times update |
+| `dietary.yaml` | Allergen-free, diabetic and infant meals |
+| `infeasible.yaml` | One rejected order per cause category |
 
-Scenarios are YAML. `extends: base.yaml` deep-merges a file over another, and `events:` is a list
-of disruptions (`close_road`, `fail_station`, `set_stock`, `demand_surge`, `add_order`,
-`agent_off`, `block_cell`). Each event is applied cumulatively and the plan is re-solved.
+![Road closure: hospital route moves off R7](img/road_closure.png)
 
-![Road closure: the hospital route moves off R7](img/road_closure.png)
-
-## 6. Running it
+## 6. Running
 
 ```bash
 pip install -r requirements.txt
-
-# text report: routes, CSP schedule, pick lists, MAPF stats, diagnoses (one block per timeline step)
-python -m relief_kitchen.run --scenario configs/scenarios/infeasible.yaml
-
-# visualiser
-python -m relief_kitchen.viz --scenario configs/scenarios/road_closure.yaml
-#   SPACE play/pause, LEFT/RIGHT time, UP/DOWN speed, TAB next timeline step, 1-9 load scenario,
-#   R close a road (live re-solve), F fail a stove, C switch CBS/prioritised, D/click select order,
-#   S screenshot, H help
-
-# headless screenshot
-python -m relief_kitchen.viz --scenario configs/scenarios/demand_surge.yaml --screenshot out.png --at 09:50
-
+python -m relief_kitchen.run --scenario configs/scenarios/infeasible.yaml   # text report
+python -m relief_kitchen.viz --scenario configs/scenarios/road_closure.yaml  # Pygame visualiser
 pytest -q
 ```
 
-## 7. Interfaces for the other modules
+Visualiser keys:
 
-* **M2 (planning)** can call `build_model(scenario, orders)` and use the task DAGs and
-  `Allocation` (tasks with agent, station, start and end; deliveries with vehicle, route and
-  times) as the initial resource schedule.
-* **M3 (uncertainty)** can change stock, durations or travel times in the `Scenario` and re-solve.
-  Diagnoses already separate the causes it would want to weigh.
-* **M4 (MARL)** can mask actions with the CSP's unary constraints (skills, working stations,
-  shifts) and use `solve_mapf` for collision-free motion.
-* **M5 (GenAI)** reads `Diagnosis` (categories, sentences, alternatives) to explain to recipients
-  why an order was delayed or modified.
+| Key | Action |
+|---|---|
+| `SPACE` | Play / pause |
+| `←` / `→` | Move time |
+| `↑` / `↓` | Change speed |
+| `TAB` | Next event |
+| `1`–`9` | Load a scenario |
+| `R` | Close a road and re-solve |
+| `F` | Fail a stove and re-solve |
+| `D` or click | Select an order |
+| `S` | Screenshot |
+| `H` | Help |

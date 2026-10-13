@@ -1,55 +1,56 @@
-"""A small, general CSP engine.
+"""A small, general CSP solver (CS 188 lecture "Constraint Satisfaction Problems").
 
-* Variables have finite domains (lists, kept in a preferred value order).
-* Constraints are objects with a scope, a `holds(assignment)` test that must return True whenever
-  it cannot yet decide (partial assignments), and diagnosis metadata: a `category` (ingredients,
-  equipment, staff, time, transport, dietary, safety, collision, priority), a `group` key used by
-  the infeasibility explainer, and a human-readable `description`.
-* The solver runs node consistency, AC-3 on binary constraints, then backtracking search with
-  MRV + degree variable ordering, LCV (or a problem-specific) value ordering and forward checking.
-  Constraints that offer a fast `revise` (bounds) are also kept arc consistent during search, and
-  an optional `node_check` hook adds global reasoning (the kitchen uses energetic resource bounds).
+Variables have finite domains, kept as lists in a preferred value order. A constraint is an object
+with a `scope` and a `holds(assignment)` test. `holds` receives a *partial* assignment and must
+return True whenever it cannot decide yet. That lets one test serve backtracking,
+forward checking and AC-3.
+
+Every constraint also carries a `category` (ingredients, equipment, staff, time, transport, ...).
+The solver ignores it; the diagnosis module uses it to say *why* an order is infeasible.
+Category "structure" marks facts that are never relaxed, for example task precedence.
+
+Solving pipeline:
+    1. node consistency      - apply unary constraints once
+    2. AC-3                  - arc consistency on binary constraints
+    3. backtracking search   - MRV with a degree tie-break, LCV value order, forward checking
 """
 
 from __future__ import annotations
 
 import time
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-CATEGORIES = ("ingredients", "equipment", "staff", "time", "transport", "dietary", "safety", "collision", "priority")
+CATEGORIES = ("ingredients", "equipment", "staff", "time", "transport", "dietary", "safety", "collision",
+              "priority", "structure")
 
 
 class Constraint:
-    def __init__(self, scope: Iterable[str], category: str, group: str, description: str, relaxable: bool = True,
-                 **meta):
+    def __init__(self, scope: Iterable[str], category: str, description: str, **meta):
+        assert category in CATEGORIES, category
         self.scope = tuple(scope)
-        self.meta = meta
-        assert category in CATEGORIES or category == "structure", category
         self.category = category
-        self.group = group
         self.description = description
-        self.relaxable = relaxable
+        self.meta = meta  # free-form tags, e.g. orders=..., kind=...
 
     def holds(self, a: dict) -> bool:  # pragma: no cover - interface
         raise NotImplementedError
 
     def revise(self, xi: str, xj: str, domains: dict[str, list]) -> list | None:
-        """Optional fast arc revision: return the pruned domain of xi, or None to fall back.
+        """Optional fast AC-3 revise for binary constraints: return the pruned domain of xi.
 
-        Constraints that set `propagate_in_search = True` are also revised during search."""
+        Returning None makes AC-3 fall back to the generic O(|Di| * |Dj|) revise."""
         return None
 
     def __repr__(self) -> str:
-        return f"<{self.category}:{self.group} {self.description}>"
+        return f"<{self.category}: {self.description}>"
 
 
 class FnConstraint(Constraint):
-    """Constraint given by a predicate over its scope's values; checked once all are assigned."""
+    """Constraint given as a predicate over the scope's values; checked once all are assigned."""
 
-    def __init__(self, scope, fn: Callable[..., bool], category: str, group: str, description: str,
-                 relaxable: bool = True, **meta):
-        super().__init__(scope, category, group, description, relaxable, **meta)
+    def __init__(self, scope, fn: Callable[..., bool], category: str, description: str, **meta):
+        super().__init__(scope, category, description, **meta)
         self.fn = fn
 
     def holds(self, a: dict) -> bool:
@@ -64,7 +65,7 @@ class CSP:
     def __init__(self):
         self.domains: dict[str, list] = {}
         self.constraints: list[Constraint] = []
-        self.priority: dict[str, tuple] = {}  # static tie-break key for variable ordering
+        self.priority: dict[str, tuple] = {}  # static tie-break for variable ordering
 
     def add_variable(self, name: str, domain: Iterable, priority: tuple = ()):
         self.domains[name] = list(domain)
@@ -75,33 +76,32 @@ class CSP:
         return c
 
     def subset(self, keep: Callable[[Constraint], bool]) -> "CSP":
+        """Same variables, only the constraints for which `keep` is true (used to relax a CSP)."""
         out = CSP()
         out.domains = {v: list(d) for v, d in self.domains.items()}
         out.priority = dict(self.priority)
         out.constraints = [c for c in self.constraints if keep(c)]
         return out
 
-    def is_solution(self, a: dict) -> list[Constraint]:
-        """Return the constraints that a complete assignment violates (empty if it is a solution)."""
+    def violated(self, a: dict) -> list[Constraint]:
+        """Constraints broken by a complete assignment (empty list = valid solution)."""
         return [c for c in self.constraints if not c.holds(a)]
 
 
 @dataclass
 class SolveStats:
-    nodes: int = 0
+    nodes: int = 0  # values tried during search
     backtracks: int = 0
-    ac3_revisions: int = 0
-    pruned: int = 0
+    pruned: int = 0  # values removed by consistency checks
     seconds: float = 0.0
 
 
 @dataclass
 class SolveResult:
-    status: str  # solved | infeasible | budget
+    status: str  # "solved" | "infeasible" | "budget" (node limit reached, treated as infeasible)
     solution: dict | None
     stats: SolveStats
-    wipeout: Constraint | None = None  # constraint that emptied a domain before search (if any)
-    notes: list[str] = field(default_factory=list)
+    wipeout: Constraint | None = None  # constraint that emptied a domain before search, if any
 
     @property
     def ok(self) -> bool:
@@ -113,22 +113,23 @@ class _Budget(Exception):
 
 
 class Solver:
-    def __init__(self, csp: CSP, *, node_limit: int = 50_000, ac3: bool = True, ac3_limit: int = 6_000,
-                 lcv: bool = True, lcv_limit: int = 2_000,
+    """Backtracking search with forward checking.
+
+    Hooks for problem-specific knowledge (all optional):
+      value_order(var, values, assignment) -> values   replaces the default LCV ordering
+      var_key(var) -> tuple                            checked before MRV, e.g. "decide menus first"
+      hints {var: value}                               value to try first (warm start)
+    """
+
+    def __init__(self, csp: CSP, *, node_limit: int = 50_000, ac3_limit: int = 6_000, lcv_limit: int = 2_000,
                  value_order: Callable[[str, list, dict], list] | None = None,
-                 hints: dict | None = None, var_key: Callable[[str], tuple] | None = None,
-                 propagate: bool = True,
-                 node_check: Callable[[str | None, dict, dict], bool] | None = None):
+                 var_key: Callable[[str], tuple] | None = None, hints: dict | None = None):
         self.csp = csp
-        self.node_check = node_check
-        self.var_key = var_key
-        self.propagate = propagate
         self.node_limit = node_limit
-        self.use_ac3 = ac3
-        self.ac3_limit = ac3_limit
-        self.lcv = lcv
-        self.lcv_limit = lcv_limit
+        self.ac3_limit = ac3_limit  # skip the generic revise when |Di| * |Dj| is larger than this
+        self.lcv_limit = lcv_limit  # LCV costs |D| * neighbours checks; only use it when that is small
         self.value_order = value_order
+        self.var_key = var_key
         self.hints = hints or {}
         self.stats = SolveStats()
         self.by_var: dict[str, list[Constraint]] = {v: [] for v in csp.domains}
@@ -136,13 +137,6 @@ class Solver:
             for v in c.scope:
                 self.by_var[v].append(c)
         self.neighbors = {v: {u for c in cs for u in c.scope if u != v} for v, cs in self.by_var.items()}
-        # constraints with a fast `revise` (e.g. precedence bounds) are kept arc consistent during
-        # search as well (a light form of MAC on top of forward checking)
-        self.fast_by_var: dict[str, list[Constraint]] = {v: [] for v in csp.domains}
-        for c in csp.constraints:
-            if len(c.scope) == 2 and getattr(c, "propagate_in_search", False):
-                for v in c.scope:
-                    self.fast_by_var[v].append(c)
 
     # ---- preprocessing -------------------------------------------------------------------------
     def node_consistency(self, domains) -> Constraint | None:
@@ -157,15 +151,15 @@ class Solver:
         return None
 
     def ac3(self, domains) -> Constraint | None:
-        arcs_of: dict[str, list[tuple[str, str, Constraint]]] = {}
-        queue: list[tuple[str, str, Constraint]] = []
+        """Standard AC-3. Returns the constraint that wiped out a domain, or None."""
+        arcs_into: dict[str, list] = {}  # var -> arcs (xk, var, c), re-queued when var's domain shrinks
+        queue = []
         for c in self.csp.constraints:
-            if len(c.scope) != 2:
-                continue
-            x, y = c.scope
-            for arc in ((x, y, c), (y, x, c)):
-                queue.append(arc)
-                arcs_of.setdefault(arc[1], []).append(arc)
+            if len(c.scope) == 2:
+                x, y = c.scope
+                for arc in ((x, y, c), (y, x, c)):
+                    queue.append(arc)
+                    arcs_into.setdefault(arc[1], []).append(arc)
         queued = {(a, b, id(c)) for a, b, c in queue}
         while queue:
             xi, xj, c = queue.pop()
@@ -174,22 +168,13 @@ class Solver:
             if new is None:
                 if len(domains[xi]) * len(domains[xj]) > self.ac3_limit:
                     continue
-                new = []
-                probe = {}
-                for x in domains[xi]:
-                    probe[xi] = x
-                    for y in domains[xj]:
-                        probe[xj] = y
-                        if c.holds(probe):
-                            new.append(x)
-                            break
-            self.stats.ac3_revisions += 1
+                new = [x for x in domains[xi] if any(c.holds({xi: x, xj: y}) for y in domains[xj])]
             if len(new) < len(domains[xi]):
                 self.stats.pruned += len(domains[xi]) - len(new)
                 domains[xi] = new
                 if not new:
                     return c
-                for arc in arcs_of.get(xi, []):
+                for arc in arcs_into.get(xi, []):
                     key = (arc[0], arc[1], id(arc[2]))
                     if arc[0] != xj and key not in queued:
                         queued.add(key)
@@ -198,6 +183,7 @@ class Solver:
 
     # ---- search --------------------------------------------------------------------------------
     def select_var(self, assign, domains):
+        """MRV, ties broken by degree (most constraints on other variables), then a static key."""
         best, best_key = None, None
         for v in domains:
             if v in assign:
@@ -213,7 +199,7 @@ class Solver:
         values = domains[var]
         if self.value_order is not None:
             values = self.value_order(var, values, assign)
-        elif self.lcv and len(values) * max(1, len(self.neighbors[var])) <= self.lcv_limit:
+        elif len(values) * max(1, len(self.neighbors[var])) <= self.lcv_limit:
             values = sorted(values, key=lambda x: self._ruled_out(var, x, domains, assign))
         hint = self.hints.get(var)
         if hint is not None and hint in values:
@@ -221,7 +207,7 @@ class Solver:
         return values
 
     def _ruled_out(self, var, val, domains, assign) -> int:
-        """LCV score: how many neighbour values this choice would eliminate."""
+        """LCV score: how many values of unassigned neighbours `var = val` would rule out."""
         assign[var] = val
         count = 0
         for c in self.by_var[var]:
@@ -230,8 +216,7 @@ class Solver:
                     continue
                 for yv in domains[y]:
                     assign[y] = yv
-                    if not c.holds(assign):
-                        count += 1
+                    count += not c.holds(assign)
                     del assign[y]
         del assign[var]
         return count
@@ -243,6 +228,9 @@ class Solver:
         return ok
 
     def forward_check(self, var, assign, domains, trail) -> bool:
+        """Remove neighbour values that conflict with `var`'s new value. False on a wipe-out.
+
+        Removed domains are pushed onto `trail` so backtracking can restore them."""
         for c in self.by_var[var]:
             for y in c.scope:
                 if y in assign:
@@ -259,26 +247,6 @@ class Solver:
                     domains[y] = kept
                     if not kept:
                         return False
-        if self.propagate:
-            return self._propagate_fast([y for y, _ in trail] + [var], assign, domains, trail)
-        return True
-
-    def _propagate_fast(self, changed, assign, domains, trail) -> bool:
-        queue = list(dict.fromkeys(changed))
-        while queue:
-            y = queue.pop()
-            for c in self.fast_by_var[y]:
-                z = c.scope[0] if c.scope[1] == y else c.scope[1]
-                if z in assign:
-                    continue
-                new = c.revise(z, y, domains)
-                if new is not None and len(new) < len(domains[z]):
-                    trail.append((z, domains[z]))
-                    self.stats.pruned += len(domains[z]) - len(new)
-                    domains[z] = new
-                    if not new:
-                        return False
-                    queue.append(z)
         return True
 
     def backtrack(self, assign, domains):
@@ -292,17 +260,14 @@ class Solver:
             if not self.consistent(var, val, assign):
                 continue
             assign[var] = val
-            trail: list = []
-            saved = domains[var]
+            trail: list = [(var, domains[var])]
             domains[var] = [val]
-            if self.forward_check(var, assign, domains, trail) and (
-                    self.node_check is None or self.node_check(var, assign, domains)):
+            if self.forward_check(var, assign, domains, trail):
                 result = self.backtrack(assign, domains)
                 if result is not None:
                     return result
             for y, old in reversed(trail):
                 domains[y] = old
-            domains[var] = saved
             del assign[var]
         self.stats.backtracks += 1
         return None
@@ -310,22 +275,17 @@ class Solver:
     def solve(self) -> SolveResult:
         t0 = time.perf_counter()
         domains = {v: list(d) for v, d in self.csp.domains.items()}
-        wipe = self.node_consistency(domains)
-        if wipe is None and self.use_ac3:
-            wipe = self.ac3(domains)
+        wipe = self.node_consistency(domains) or self.ac3(domains)
         if wipe is not None:
-            self.stats.seconds = time.perf_counter() - t0
-            return SolveResult("infeasible", None, self.stats, wipeout=wipe)
-        if self.node_check is not None and not self.node_check(None, {}, domains):
-            self.stats.seconds = time.perf_counter() - t0
-            return SolveResult("infeasible", None, self.stats, notes=["global check failed at the root"])
-        try:
-            sol = self.backtrack({}, domains)
-        except _Budget:
-            self.stats.seconds = time.perf_counter() - t0
-            return SolveResult("budget", None, self.stats)
+            result = SolveResult("infeasible", None, self.stats, wipeout=wipe)
+        else:
+            try:
+                sol = self.backtrack({}, domains)
+                result = SolveResult("solved" if sol is not None else "infeasible", sol, self.stats)
+            except _Budget:
+                result = SolveResult("budget", None, self.stats)
         self.stats.seconds = time.perf_counter() - t0
-        return SolveResult("solved" if sol is not None else "infeasible", sol, self.stats)
+        return result
 
 
 def solve(csp: CSP, **kw) -> SolveResult:

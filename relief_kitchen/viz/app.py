@@ -21,7 +21,6 @@ import pygame
 
 from ..env.scenario import Event, load_scenario
 from ..search_csp.allocation import UNLOAD_MINUTES
-from ..search_csp.motion import plan_kitchen_motion
 from ..search_csp.pipeline import M1Result, solve_scenario
 
 # ---------------------------------------------------------------------------------------------
@@ -124,9 +123,8 @@ def dashed_line(surf, color, a, b, width=2, dash=8):
 # application
 # ---------------------------------------------------------------------------------------------
 class App:
-    def __init__(self, scenario_path: str, mapf: str = "cbs"):
+    def __init__(self, scenario_path: str):
         self.scenario_files = sorted(str(p) for p in Path(scenario_path).parent.glob("*.yaml"))
-        self.mapf = mapf
         self.speed = 4.0  # simulated minutes per real second
         self.playing = True
         self.minute = 0.0
@@ -157,12 +155,12 @@ class App:
 
         def fn():
             sc = load_scenario(path)
-            steps = [solve_scenario(sc, self.mapf, label="Initial plan")]
+            steps = [solve_scenario(sc, label="Initial plan")]
             self._pending = steps
             for ev in sc.events:
                 sc = sc.copy()
                 text = sc.apply(ev)
-                steps.append(solve_scenario(sc, self.mapf, label=text))
+                steps.append(solve_scenario(sc, label=text))
                 self._pending = list(steps)
 
         self.steps, self.step = [], 0
@@ -180,18 +178,11 @@ class App:
                 self.message = "nothing left to disrupt"
                 return
             text = sc.apply(ev)
-            res = solve_scenario(sc, self.mapf, label=text + " (live)")
+            res = solve_scenario(sc, label=text + " (live)")
             self._pending = self.steps + [res]
             self._jump_to_last = True
 
         self._run("Re-solving after disruption ...", fn)
-
-    def toggle_mapf(self):
-        self.mapf = "prioritized" if self.mapf == "cbs" else "cbs"
-        for r in self.steps:
-            if r.allocation:
-                r.motion = plan_kitchen_motion(r.scenario, r.allocation, self.mapf)
-        self.message = f"MAPF solver: {self.mapf.upper()}"
 
     @property
     def cur(self) -> M1Result | None:
@@ -233,8 +224,6 @@ class App:
                 if i < len(self.scenario_files) and not self.busy:
                     self.load(self.scenario_files[i])
                     self.minute = 0
-            elif k == pygame.K_c and not self.busy:
-                self.toggle_mapf()
             elif k == pygame.K_r and not self.busy:
                 self.add_event(self._random_road)
             elif k == pygame.K_f and not self.busy:
@@ -342,7 +331,7 @@ class App:
                      (79, 163, 247)).right + 8
         if r.motion:
             col = (123, 211, 137) if r.motion.collisions == 0 else (232, 93, 117)
-            x = chip(s, f"MAPF {r.motion.method.upper()}  collisions {r.motion.collisions}", (x, 38), col).right + 8
+            x = chip(s, f"MAPF collisions {r.motion.collisions}", (x, 38), col).right + 8
         acc, rej = len(r.accepted), len(r.diagnoses)
         x = chip(s, f"{acc} accepted  {rej} infeasible", (x, 38), (123, 211, 137) if not rej else (245, 185, 66)).right + 8
         # timeline tabs
@@ -366,7 +355,7 @@ class App:
 
     # ---- kitchen ---------------------------------------------------------------------------
     def _draw_kitchen(self, s, r, rect):
-        panel(s, rect, "Kitchen floor  (grid graph, CBS / prioritised MAPF)")
+        panel(s, rect, "Kitchen floor  (grid graph, prioritised MAPF)")
         sc, grid = r.scenario, r.scenario.kitchen
         area = rect.inflate(-28, -60).move(0, 14)
         cell = min(area.width // grid.width, area.height // grid.height)
@@ -687,11 +676,9 @@ class App:
             d = r.diagnoses[sel]
             mode = ("cannot be met on its own" if d.mode == "isolated"
                     else "conflicts with higher-priority orders")
-            lines.append((f"INFEASIBLE - {mode}" + ("" if d.exact else " (search budget)"), (232, 93, 117), True))
+            lines.append((f"INFEASIBLE - {mode}", (232, 93, 117), True))
             for c in d.causes:
                 lines.append((f"[{c.category}] {c.detail}", CATEGORY_COLORS.get(c.category, MUTED), False))
-            for a in d.alternatives:
-                lines.append((f"alternative: {a}", (123, 211, 137), False))
         elif sel in deliveries:
             dlv = deliveries[sel]
             rec = sc.recipes[dlv.recipe]
@@ -718,7 +705,7 @@ class App:
     # ---- footer / overlays ------------------------------------------------------------------
     def _draw_footer(self, s):
         keys = ("SPACE play/pause   <- -> time   up/down speed   TAB next step   1-9 scenario   "
-                "R close a road   F fail a stove   C CBS/prioritised   D select order   S screenshot   H help")
+                "R close a road   F fail a stove   D select order   S screenshot   H help")
         blit_text(s, keys, (16, H - 26), 12, MUTED)
         if self.message:
             blit_text(s, self.message, (W - 16, H - 26), 12, ACCENT, anchor="topright")
@@ -744,18 +731,18 @@ class App:
         text = [
             ("What you are looking at", True),
             ("Kitchen: agents move on a 4-connected grid graph. Every time the CSP schedule changes their", False),
-            ("goals, Conflict-Based Search (or prioritised planning) finds collision-free timed paths.", False),
+            ("goals, prioritised planning (space-time A* per agent) finds collision-free timed paths.", False),
             ("Roads: A* routes from the kitchen; closed roads are dashed red and routes are recomputed.", False),
             ("Schedule: the CSP assigns each batch task an agent, station and start slot, and each order a", False),
             ("menu variant, vehicle and departure, under dietary, stock, skill, shift, capacity, deadline,", False),
             ("food-safety, workspace and priority constraints.", False),
-            ("Diagnosis: rejected orders are explained by QuickXplain - a minimal set of conflicting", False),
-            ("constraints, tagged ingredients / equipment / staff / time / transport.", False),
+            ("Diagnosis: per-category checks (stock, equipment, staff, roads, time), then relaxing one", False),
+            ("constraint category at a time - ingredients / equipment / staff / time / transport.", False),
             ("", False),
             ("Keys", True),
             ("SPACE play/pause    LEFT/RIGHT -/+ 10 min    UP/DOWN speed    HOME restart", False),
             ("TAB / P next / previous timeline step (initial plan, then after each scenario event)", False),
-            ("1-9 load scenario file    R close a used road    F fail a stove    C switch MAPF solver", False),
+            ("1-9 load scenario file    R close a used road    F fail a stove", False),
             ("D or click: select order    S screenshot    H toggle this help    Q / ESC quit", False),
         ]
         y = box.y + 18
@@ -767,7 +754,6 @@ class App:
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Relief kitchen - Module 1 visualiser")
     ap.add_argument("--scenario", default="configs/scenarios/road_closure.yaml")
-    ap.add_argument("--mapf", choices=["cbs", "prioritized"], default="cbs")
     ap.add_argument("--screenshot", help="render one frame to this PNG and exit (works headless)")
     ap.add_argument("--at", default="09:20", help="clock time for --screenshot")
     ap.add_argument("--step", type=int, default=-1, help="timeline step for --screenshot (-1 = last)")
@@ -779,7 +765,7 @@ def main(argv=None):
     pygame.init()
     pygame.display.set_caption("Relief Kitchen - Module 1")
     screen = pygame.display.set_mode((W, H))
-    app = App(args.scenario, args.mapf)
+    app = App(args.scenario)
     clock = pygame.time.Clock()
 
     if args.screenshot:

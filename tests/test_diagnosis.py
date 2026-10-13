@@ -2,7 +2,7 @@ import pytest
 
 from conftest import SCENARIOS
 from relief_kitchen.env import load_scenario
-from relief_kitchen.search_csp.pipeline import solve_scenario
+from relief_kitchen.search_csp.pipeline import run_timeline, solve_scenario
 
 
 @pytest.fixture(scope="module")
@@ -26,5 +26,12 @@ def test_feasible_order_still_served(result):
     assert [o.id for o in result.accepted] == ["O1"]
 
 
-def test_time_diagnosis_offers_alternative(result):
-    assert any("10:00" in a for a in result.diagnoses["O6"].alternatives)
+def test_isolated_causes_are_direct_checks(result):
+    assert all(d.mode == "isolated" for d in result.diagnoses.values())
+
+
+def test_contention_is_detected():
+    # demand surge: the stadium order no longer fits next to the hospital and shelter orders
+    *_, last = run_timeline(str(SCENARIOS / "demand_surge.yaml"))
+    d = last.diagnoses["O5"]
+    assert d.mode == "contention" and d.categories

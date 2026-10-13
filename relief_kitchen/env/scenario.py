@@ -37,7 +37,6 @@ class Scenario:
     horizon: int  # minutes
     batch_size: int
     max_hold: int  # food safety: max minutes between end of cooking and arrival
-    clean_minutes: int  # food safety: cleaning gap before an allergen-free batch
     kitchen: KitchenGrid
     roads: RoadNetwork
     agents: dict[str, Agent]
@@ -185,7 +184,6 @@ def load_scenario(path: str | Path) -> Scenario:
         horizon=clk(data.get("end", "16:00")),
         batch_size=int(data.get("batch_size", 50)),
         max_hold=int(data.get("food_safety", {}).get("max_hold_minutes", 150)),
-        clean_minutes=int(data.get("food_safety", {}).get("clean_minutes", 10)),
         kitchen=kitchen,
         roads=RoadNetwork(places, roads),
         agents=agents,

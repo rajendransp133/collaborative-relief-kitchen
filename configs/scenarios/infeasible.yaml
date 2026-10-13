@@ -8,7 +8,7 @@ start: "08:00"
 end: "16:00"
 slot_minutes: 10
 batch_size: 50
-food_safety: {max_hold_minutes: 150, clean_minutes: 10}
+food_safety: {max_hold_minutes: 150}
 
 kitchen:
   map:

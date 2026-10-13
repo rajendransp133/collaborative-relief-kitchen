@@ -1,8 +1,9 @@
 """Turn the CSP schedule into collision-free movement on the kitchen floor.
 
-At every slot boundary each agent's goal is the access cell of the station it works during that
-slot (or its home cell when idle). Whenever goals change, a multi-agent path finder (CBS or
-prioritised planning) moves everyone at once without vertex or swap collisions.
+At every slot boundary, each agent's goal is the access cell of the station it works during that
+slot, or its home cell when idle. Whenever the goals change, prioritised planning moves everyone
+at once without vertex or swap collisions. The result is a list of timed segments that the
+visualiser animates (one grid step = 20 simulated seconds).
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ from dataclasses import dataclass, field
 from ..env.entities import Cell
 from ..env.scenario import Scenario
 from .allocation import Allocation
-from .mapf import MAPFResult, find_conflicts, solve_mapf
+from .mapf import MAPFResult, find_conflicts, prioritized_planning
 
 
 @dataclass
@@ -23,13 +24,12 @@ class Segment:
 
 @dataclass
 class KitchenMotion:
-    method: str
     slot_minutes: int
     homes: dict[str, Cell]
     segments: list[Segment] = field(default_factory=list)
     collisions: int = 0
     failures: int = 0
-    steps: int = 0  # total agent moves
+    steps: int = 0  # total agent time steps (moves + waits)
 
     def position(self, agent: str, minute: float, step_seconds: float = 20.0) -> tuple[float, float]:
         """Interpolated (row, col) of an agent at a simulation minute (for animation)."""
@@ -64,11 +64,11 @@ class KitchenMotion:
         return cur or []
 
 
-def plan_kitchen_motion(sc: Scenario, alloc: Allocation, method: str = "cbs") -> KitchenMotion:
+def plan_kitchen_motion(sc: Scenario, alloc: Allocation) -> KitchenMotion:
     grid = sc.kitchen
     S = sc.slot_minutes
     homes = {a.id: a.home for a in sc.agents.values()}
-    motion = KitchenMotion(method, S, homes)
+    motion = KitchenMotion(S, homes)
     pos = dict(homes)
     last = max((t.end for t in alloc.tasks), default=0) // S + 1
     for slot in range(last + 1):
@@ -79,12 +79,13 @@ def plan_kitchen_motion(sc: Scenario, alloc: Allocation, method: str = "cbs") ->
                 goal[t.agent] = grid.stations[t.station].access
         if goal == pos:
             continue
+        # agents starting a task now get priority over agents just heading home
         order = sorted(goal, key=lambda a: -sum(1 for t in alloc.tasks if t.agent == a and t.start == minute))
-        res = solve_mapf(grid, pos, goal, method=method, order=order)
+        res = prioritized_planning(grid, pos, goal, order=order)
         if not res.ok:
             motion.failures += 1
             continue
-        motion.collisions += len(find_conflicts(res.paths))
+        motion.collisions += len(find_conflicts(res.paths))  # sanity check, expected 0
         motion.steps += sum(len(p) - 1 for p in res.paths.values())
         motion.segments.append(Segment(slot, res))
         pos = {a: p[-1] for a, p in res.paths.items()}

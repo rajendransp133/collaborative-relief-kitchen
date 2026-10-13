@@ -16,7 +16,7 @@ def solved():
 
 def test_solution_satisfies_every_constraint(solved):
     sc, m, res, _ = solved
-    assert m.csp.is_solution(res.solution) == []
+    assert m.csp.violated(res.solution) == []
 
 
 def test_diet_stock_and_deadlines(solved):

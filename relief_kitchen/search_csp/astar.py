@@ -1,4 +1,10 @@
-"""A* on the kitchen grid, plus space-time A* used by the multi-agent path finders."""
+"""Grid search on the kitchen floor (CS 188 "Search" lectures).
+
+* `astar`          - A* with the Manhattan heuristic (admissible: each move costs 1, no diagonals).
+* `bfs_distances`  - breadth-first search from one cell to every reachable cell.
+* `space_time_astar` - A* whose states are (cell, time). "Wait" is an extra action, and some
+  (cell, t) states or moves are forbidden because other agents reserved them. Used by `mapf`.
+"""
 
 from __future__ import annotations
 
@@ -14,6 +20,7 @@ def manhattan(a: Cell, b: Cell) -> int:
 
 
 def reconstruct(parents: dict, node) -> list:
+    """Follow parent pointers back from `node` and return the path from the start."""
     path = [node]
     while node in parents:
         node = parents[node]
@@ -23,7 +30,9 @@ def reconstruct(parents: dict, node) -> list:
 
 
 def astar(grid: KitchenGrid, start: Cell, goal: Cell, stats: dict | None = None) -> list[Cell] | None:
-    """Shortest 4-connected path from start to goal (both inclusive), or None if unreachable."""
+    """Shortest 4-connected path from start to goal (both ends included), or None if unreachable.
+
+    Graph search with lazy deletion: stale heap entries (cost > best known g) are skipped."""
     if start == goal:
         return [start]
     open_heap = [(manhattan(start, goal), 0, start)]
@@ -51,7 +60,7 @@ def astar(grid: KitchenGrid, start: Cell, goal: Cell, stats: dict | None = None)
 
 
 def bfs_distances(grid: KitchenGrid, source: Cell) -> dict[Cell, int]:
-    """Uninformed breadth-first search: distance from source to every reachable floor cell."""
+    """BFS: number of steps from `source` to every reachable floor cell (also an exact heuristic)."""
     dist = {source: 0}
     frontier = [source]
     while frontier:
@@ -79,7 +88,11 @@ def space_time_astar(
 
     The path ends at `goal` at some t >= goal_busy_until, after which the agent stays there; the
     caller makes sure nothing is constrained at the goal afterwards.
+
+    State = (cell, t). Every action costs one time step, so g(state) = t, and a state's first
+    discovery is already optimal: marking states `seen` on push is safe.
     """
+    # true BFS distances to the goal: a perfect heuristic for the static map, admissible with waits
     h = heuristic if heuristic is not None else bfs_distances(grid, goal)
     if start not in h:
         return None

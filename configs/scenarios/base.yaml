@@ -9,7 +9,6 @@ slot_minutes: 10
 batch_size: 50
 food_safety:
   max_hold_minutes: 150   # cooked food must be served within 2.5 h
-  clean_minutes: 10       # cleaning before an allergen-free batch on a shared station
 
 kitchen:
   # S shelf, P prep counter, C stove, T steamer, K packaging, D dispatch door, # wall/pillar

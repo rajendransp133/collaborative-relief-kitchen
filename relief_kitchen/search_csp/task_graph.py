@@ -31,12 +31,12 @@ class TaskGraph:
     order: Order
     nodes: dict[str, TaskNode]
     dispatch: str  # id of the dispatch node
-    travel_minutes: float | None = None
 
     def edges(self) -> list[tuple[str, str]]:
         return [(p, n.id) for n in self.nodes.values() for p in n.preds]
 
     def topological_order(self) -> list[str]:
+        """Kahn's algorithm: repeatedly emit a node whose predecessors have all been emitted."""
         indeg = {n: len(self.nodes[n].preds) for n in self.nodes}
         succ: dict[str, list[str]] = {n: [] for n in self.nodes}
         for u, v in self.edges():
@@ -55,7 +55,8 @@ class TaskGraph:
         return out
 
     def earliest_starts(self, release: int = 0) -> dict[str, int]:
-        """ASAP start times ignoring resource contention (a lower bound)."""
+        """ASAP start of each task with unlimited staff and stations: in topological order,
+        start = max(release, end of every predecessor). A lower bound on any real schedule."""
         est: dict[str, int] = {}
         for n in self.topological_order():
             node = self.nodes[n]
@@ -63,7 +64,7 @@ class TaskGraph:
         return est
 
     def critical_path_minutes(self) -> int:
-        """Minutes from release to dispatch along the longest dependency chain."""
+        """Length of the longest dependency chain to dispatch (minutes) - the critical path."""
         est = self.earliest_starts(0)
         return est[self.dispatch]
 
@@ -72,6 +73,7 @@ class TaskGraph:
 
 
 def batch_sizes(meals: int, batch_size: int) -> list[int]:
+    """Split `meals` into the fewest batches of at most `batch_size`, as evenly as possible."""
     n = max(1, math.ceil(meals / batch_size))
     base, extra = divmod(meals, n)
     return [base + (1 if i < extra else 0) for i in range(n)]

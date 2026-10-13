@@ -54,22 +54,19 @@ def format_result(r: M1Result) -> str:
         out.append("Nearest working equipment: " + ", ".join(f"{k} {v}" for k, v in r.nearest.items()))
         out.append("")
         st = al.result.stats
-        out.append(f"CSP: {st.nodes} nodes, {st.backtracks} backtracks, {st.pruned} values pruned, "
+        out.append(f"CSP (last solve): {st.nodes} nodes, {st.backtracks} backtracks, {st.pruned} values pruned, "
                    f"{st.seconds * 1000:.0f} ms")
     if r.motion:
         m = r.motion
-        out.append(f"Kitchen motion ({m.method.upper()}): {len(m.segments)} multi-agent moves, {m.steps} agent "
+        out.append(f"Kitchen motion (prioritised planning): {len(m.segments)} multi-agent moves, {m.steps} agent "
                    f"time-steps, collisions: {m.collisions}, failures: {m.failures}")
     out.append("")
     if r.diagnoses:
         out.append("INFEASIBLE ORDERS")
         for d in r.diagnoses.values():
-            tag = "" if d.exact else "  (within search budget)"
-            out.append(f"  {d.summary()}  [{d.mode}]{tag}")
+            out.append(f"  {d.summary()}  [{d.mode}]")
             for c in d.causes:
                 out.append(f"    - {c.category}: {c.detail}")
-            for a in d.alternatives:
-                out.append(f"    > alternative: {a}")
     else:
         out.append("All orders are feasible.")
     out.append("")
