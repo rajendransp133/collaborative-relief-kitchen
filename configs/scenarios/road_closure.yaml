@@ -1,0 +1,11 @@
+extends: base.yaml
+name: Road closure
+description: >
+  README event 5: road R7 (the last stretch to the hospital) is blocked by a landslide. Routes are
+  recomputed with A*, arrival estimates updated, and the hospital order is still served first.
+events:
+  - {kind: close_road, road: R7, label: "Landslide closes R7 (J4 - hospital)"}
+  - {kind: close_road, road: R8, label: "Flooding closes R8 (J3 - Shelter A)"}
+network:
+  roads:
+    R14: [J3, hospital, 30]

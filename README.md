@@ -77,6 +77,11 @@ flowchart TB
 - **CSP.** Variables cover *task → agent, station, time slot* and *order → meal variant, vehicle, departure*. Constraints cover dietary requirements, ingredient stock, equipment capacity, agent skills, preparation deadlines, workspace occupancy and collision avoidance, food-safety rules (e.g. allergen separation, maximum holding time for cooked food) and delivery priority.
 - **Infeasibility diagnosis.** Every constraint is tagged with a category: ingredients, equipment, staff, time or transport. When an order has no solution, a minimal conflicting set of constraints is extracted (QuickXplain-style), so the report says *why*, e.g. "order 12: transport (only route blocked) + time (deadline 14:00)".
 
+> [!TIP]
+> **M1 is implemented.** See [docs/module1.md](docs/module1.md) for the formulation, algorithms and scenarios. To try it, run `python -m relief_kitchen.viz` (Pygame visualiser) or `python -m relief_kitchen.run --scenario configs/scenarios/infeasible.yaml` (text report).
+>
+> ![Module 1 visualiser](docs/img/demand_surge.png)
+
 ### M2 — Planning
 
 - **Actions** have preconditions, effects, a duration and required resources. Example: `Cook(rice, stove)` needs `Washed(rice)` and a free stove, produces `Cooked(rice)`, and takes about 25 minutes.
@@ -255,6 +260,19 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+Module 1 (available now):
+
+```bash
+# Text report: routes, CSP schedule, MAPF stats and infeasibility diagnosis for each timeline step
+python -m relief_kitchen.run --scenario configs/scenarios/infeasible.yaml
+
+# Pygame visualiser (kitchen floor, road network, schedule, diagnosis)
+python -m relief_kitchen.viz --scenario configs/scenarios/road_closure.yaml
+
+# Tests
+pytest -q
+```
+
 Planned entry points:
 
 ```bash
@@ -284,7 +302,7 @@ M5 needs an LLM with tool calling (a hosted API or a local model); configuration
 ## Roadmap
 
 - [ ] **Environment:** kitchen grid, road network, scenario format, event generator, PettingZoo wrapper
-- [ ] **M1:** A\* and multi-agent paths, road routing, CSP model, infeasibility diagnosis
+- [x] **M1:** A\* and multi-agent paths, road routing, CSP model, infeasibility diagnosis ([details](docs/module1.md))
 - [ ] **M2:** action schema, partial-order planner, resource scheduling, local plan repair
 - [ ] **M3:** belief models, on-time and stock-sufficiency probabilities, provenance tags, contingencies
 - [ ] **M4:** reward design, IQL baseline, VDN / QMIX / MAPPO, comparison with heuristic baselines

@@ -1,0 +1,8 @@
+extends: base.yaml
+name: Stove failure
+description: >
+  README event 3: stove C2 fails mid-morning. Its batches move to the remaining stoves; the small
+  stove C3 can only take batches of up to 30 meals.
+events:
+  - {kind: fail_station, station: C2, label: "Stove C2 fails"}
+  - {kind: fail_station, station: C1, label: "Stove C1 fails as well"}
