@@ -73,9 +73,14 @@ flowchart TB
 ### M1 — Search and constraint satisfaction
 
 - **Graphs.** The kitchen, storage and packaging areas form a grid (occupancy) graph; the delivery network is a weighted road graph whose edges can close; each recipe is a task-dependency DAG.
-- **Paths and routes.** A\* for single agents; multi-agent path finding (prioritised planning, with Conflict-Based Search as the optimal variant) for collision-free movement in shared corridors; shortest-path routing on the road graph, recomputed when a road closes. Search also locates the nearest available ingredient or piece of equipment.
+- **Paths and routes.** A\* for single agents; multi-agent path finding (prioritised planning with space-time A\*) for collision-free movement in shared corridors; shortest-path routing on the road graph, recomputed when a road closes. Search also locates the nearest available ingredient or piece of equipment.
 - **CSP.** Variables cover *task → agent, station, time slot* and *order → meal variant, vehicle, departure*. Constraints cover dietary requirements, ingredient stock, equipment capacity, agent skills, preparation deadlines, workspace occupancy and collision avoidance, food-safety rules (e.g. allergen separation, maximum holding time for cooked food) and delivery priority.
-- **Infeasibility diagnosis.** Every constraint is tagged with a category: ingredients, equipment, staff, time or transport. When an order has no solution, a minimal conflicting set of constraints is extracted (QuickXplain-style), so the report says *why*, e.g. "order 12: transport (only route blocked) + time (deadline 14:00)".
+- **Infeasibility diagnosis.** Every constraint is tagged with a category: ingredients, equipment, staff, time or transport. When an order has no solution, a direct check per category runs first (stock, working equipment, staff on shift, open roads, critical-path time); if those pass, one category at a time is relaxed to find which one blocks the order. The report therefore says *why*, e.g. "order 12: transport (only route blocked) + time (deadline 14:00)".
+
+> [!TIP]
+> **M1 is implemented.** See [docs/module1.md](docs/module1.md) for the formulation, algorithms and scenarios. To try it, run `python -m relief_kitchen.viz` (Pygame visualiser) or `python -m relief_kitchen.run --scenario configs/scenarios/infeasible.yaml` (text report).
+>
+> ![Module 1 visualiser: kitchen page](docs/img/kitchen.png)
 
 ### M2 — Planning
 
@@ -255,6 +260,19 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+Module 1 (available now):
+
+```bash
+# Text report: routes, CSP schedule, MAPF stats and infeasibility diagnosis for each timeline step
+python -m relief_kitchen.run --scenario configs/scenarios/infeasible.yaml
+
+# Pygame visualiser: Kitchen, Delivery and Overview pages with hover details
+python -m relief_kitchen.viz --scenario configs/scenarios/road_closure.yaml
+
+# Tests
+pytest -q
+```
+
 Planned entry points:
 
 ```bash
@@ -284,7 +302,7 @@ M5 needs an LLM with tool calling (a hosted API or a local model); configuration
 ## Roadmap
 
 - [ ] **Environment:** kitchen grid, road network, scenario format, event generator, PettingZoo wrapper
-- [ ] **M1:** A\* and multi-agent paths, road routing, CSP model, infeasibility diagnosis
+- [x] **M1:** A\* and multi-agent paths, road routing, CSP model, infeasibility diagnosis ([details](docs/module1.md))
 - [ ] **M2:** action schema, partial-order planner, resource scheduling, local plan repair
 - [ ] **M3:** belief models, on-time and stock-sufficiency probabilities, provenance tags, contingencies
 - [ ] **M4:** reward design, IQL baseline, VDN / QMIX / MAPPO, comparison with heuristic baselines

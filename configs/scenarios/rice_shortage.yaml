@@ -1,0 +1,8 @@
+extends: base.yaml
+name: Rice shortage
+description: >
+  README event 4: the inventory check finds only 12 kg of rice. The CSP substitutes diet-safe
+  variants (roti, millet) where it can, and explains any order it still cannot cover.
+events:
+  - {kind: set_stock, shelf: S1, ingredient: rice, kg: 6, label: "Shelf S1 holds only 6 kg rice"}
+  - {kind: set_stock, shelf: S3, ingredient: rice, kg: 6, label: "Shelf S3 holds only 6 kg rice"}

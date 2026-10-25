@@ -1,0 +1,104 @@
+name: Infeasible orders
+description: >
+  A bad afternoon: two roads to the stadium are closed, the steamer is broken, millet ran out,
+  the cooks leave at 13:00 and one order has an impossible deadline. Each problem order should be
+  rejected with the right cause (transport, equipment, ingredients, staff, time).
+
+start: "08:00"
+end: "16:00"
+slot_minutes: 5
+batch_size: 50
+food_safety: {max_hold_minutes: 150}
+
+kitchen:
+  map:
+    - "################"
+    - "#S.S.S.....K.K.#"
+    - "#..............#"
+    - "#.P.P.....###..#"
+    - "#..............D"
+    - "#.C.C.CT.......#"
+    - "#......#.......#"
+    - "#..............#"
+    - "################"
+  access: {T1: [6, 6]}
+  stations:
+    S1: {stock: {rice: 40, lentils: 15}}
+    S2: {stock: {millet: 0, wheat: 20, vegetables: 30}}
+    S3: {stock: {vegetables: 20, cashew: 3, rice: 10, lentils: 6}}
+    C1: {max_batch: 60}
+    C2: {max_batch: 60}
+    C3: {max_batch: 30}
+    T1: {max_batch: 60, failed: true}
+
+agents:
+  Anu:   {kind: human, skills: [cook, prep], home: [7, 1], shift: ["08:00", "13:00"]}
+  Ravi:  {kind: human, skills: [cook, prep, pack], home: [7, 3], shift: ["08:00", "13:00"]}
+  Meena: {kind: human, skills: [prep, pack, carry], home: [7, 5]}
+  R1:    {kind: robot, skills: [carry, pack], home: [7, 9]}
+  R2:    {kind: robot, skills: [carry], home: [7, 12]}
+
+stages:
+  - {name: fetch, skill: carry, station: storage, minutes: 10}
+  - {name: prep, skill: prep, station: prep, minutes: 20, after: [fetch]}
+  - {name: cook, skill: cook, station: stove, minutes: 30, after: [prep]}
+  - {name: pack, skill: pack, station: packaging, minutes: 10, after: [cook]}
+
+recipes:
+  rice_dal: {name: Rice and dal, tags: [vegetarian], per_meal: {rice: 0.15, lentils: 0.05, vegetables: 0.05}}
+  veg_pulao: {name: Vegetable pulao with cashew, tags: [vegetarian], allergens: [nuts],
+              per_meal: {rice: 0.15, vegetables: 0.08, cashew: 0.01}}
+  millet_khichdi: {name: Millet khichdi, tags: [vegetarian, diabetic, soft],
+                   per_meal: {millet: 0.12, lentils: 0.05, vegetables: 0.05}}
+  roti_sabzi: {name: Roti and sabzi, tags: [vegetarian, diabetic], allergens: [gluten],
+               per_meal: {wheat: 0.12, vegetables: 0.1}}
+  idli_sambar: {name: Idli sambar, tags: [vegetarian, soft, infant], per_meal: {rice: 0.1, lentils: 0.05},
+                overrides: {cook: {station: steamer, minutes: 30}}}
+
+network:
+  places:
+    depot:     {kind: depot, xy: [8, 50], label: Kitchen}
+    J1:        {kind: junction, xy: [30, 28]}
+    J2:        {kind: junction, xy: [30, 72]}
+    J3:        {kind: junction, xy: [55, 50]}
+    J4:        {kind: junction, xy: [75, 25]}
+    J5:        {kind: junction, xy: [72, 75]}
+    hospital:  {kind: hospital, xy: [95, 12], label: District Hospital, people: 40}
+    shelter_a: {kind: shelter, xy: [95, 50], label: School Shelter A, people: 100}
+    shelter_b: {kind: shelter, xy: [92, 90], label: Temple Shelter B, people: 60}
+    shelter_c: {kind: shelter, xy: [45, 95], label: Stadium Shelter C, people: 80}
+  roads:
+    R1: [depot, J1, 12]
+    R2: [depot, J2, 14]
+    R3: [J1, J3, 15]
+    R4: [J2, J3, 13]
+    R5: [J1, J4, 25]
+    R6: [J3, J4, 14]
+    R7: [J4, hospital, 10]
+    R8: [J3, shelter_a, 22]
+    R9: [J4, shelter_a, 16]
+    R10: [J3, J5, 14]
+    R11: [J5, shelter_b, 12]
+    R12: [J2, shelter_c, 20, closed]
+    R13: [J5, shelter_c, 18, closed]
+
+vehicles:
+  V1: {capacity: 120, speed: 1.0}
+  V2: {capacity: 250, speed: 0.8}
+  V3: {capacity: 40, speed: 1.5}
+
+orders:
+  # feasible
+  - {id: O1, destination: hospital, meals: 40, diet: [diabetic], deadline: "11:00", priority: 3}
+  # transport: every road into the stadium is closed
+  - {id: O2, destination: shelter_c, meals: 80, diet: [], deadline: "13:00", priority: 2}
+  # equipment: infant meals means idli, which needs the steamer - and the steamer has failed
+  - {id: O3, destination: shelter_a, meals: 30, diet: [infant], deadline: "13:30", priority: 2}
+  # ingredients: diabetic AND gluten-free means millet khichdi, but millet is out of stock
+  - {id: O4, destination: shelter_b, meals: 50, diet: [diabetic, gluten_free], deadline: "14:00", priority: 1}
+  # staff: request arrives at 13:30, after both cooks have gone home
+  - {id: O5, destination: shelter_a, meals: 60, diet: [], deadline: "16:00", priority: 1, release: "13:30"}
+  # time: 100 meals to Shelter A by 09:00 is impossible (kitchen chain alone takes 70 min)
+  - {id: O6, destination: shelter_a, meals: 100, diet: [], deadline: "09:00", priority: 1}
+
+events: []

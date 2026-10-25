@@ -1,0 +1,11 @@
+extends: base.yaml
+name: Dietary constraints
+description: >
+  README event 6: recipients need allergen-free, diabetic-friendly and infant meals. The dietary
+  constraint only allows recipes that satisfy each order's diet, so no unsafe menu is ever chosen.
+orders:
+  - {id: O1, destination: hospital, meals: 40, diet: [diabetic, soft], deadline: "11:30", priority: 3}
+  - {id: O2, destination: shelter_a, meals: 60, diet: [gluten_free, nut_free], deadline: "12:30", priority: 2}
+  - {id: O3, destination: shelter_a, meals: 40, diet: [diabetic], deadline: "12:30", priority: 2}
+  - {id: O4, destination: shelter_b, meals: 50, diet: [vegetarian], deadline: "13:00", priority: 1}
+  - {id: O5, destination: shelter_c, meals: 30, diet: [infant], deadline: "12:00", priority: 2}
