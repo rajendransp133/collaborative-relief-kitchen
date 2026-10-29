@@ -10,8 +10,8 @@ from ..env.scenario import clock
 from .page_delivery import draw_network_map
 from .page_kitchen import draw_kitchen_map
 from .state import ViewState, end_minute, sorted_orders
-from .theme import (ACCENT, BAND, ERROR, FAINT, GRID, HAIRLINE, HIGHLIGHT, INK, MUTED, SURFACE, disc, fit, hline,
-                    mix, section, text, text_width, wrap)
+from .theme import (ACCENT, BAND, ERROR, FAINT, GRID, HAIRLINE, HIGHLIGHT, INK, MUTED, SURFACE, card, disc, fit,
+                    hline, mix, section, text, text_width, wrap)
 from .widgets import CONTENT_BOTTOM, CONTENT_TOP, M, W
 
 KITCHEN = pygame.Rect(M, CONTENT_TOP, 640, 330)
@@ -21,17 +21,31 @@ ORDERS = pygame.Rect(960, CONTENT_TOP + 350, W - M - 960, CONTENT_BOTTOM - CONTE
 
 
 def draw_overview_page(st: ViewState, s, r):
-    section(s, KITCHEN.x, KITCHEN.y, "Kitchen", "see the Kitchen page for details")
-    draw_kitchen_map(st, s, r, pygame.Rect(KITCHEN.x, KITCHEN.y + 24, KITCHEN.width, KITCHEN.height - 30),
+    pad = 10
+    # Top row: kitchen map card + delivery network card
+    kitchen_card = pygame.Rect(M, CONTENT_TOP + 6, 650, 340)
+    card(s, kitchen_card)
+    section(s, kitchen_card.x + pad, kitchen_card.y + pad, "Kitchen", "see Kitchen page for details")
+    draw_kitchen_map(st, s, r,
+                     pygame.Rect(kitchen_card.x + pad, kitchen_card.y + pad + 24,
+                                 kitchen_card.width - pad * 2, kitchen_card.height - pad * 2 - 28),
                      detailed=False)
-    section(s, NETWORK.x, NETWORK.y, "Delivery network", "see the Delivery page for details")
-    draw_network_map(st, s, r, pygame.Rect(NETWORK.x + 20, NETWORK.y + 40, NETWORK.width - 170, NETWORK.height - 70),
+    network_card = pygame.Rect(M + 668, CONTENT_TOP + 6, W - M - 668 - M, 340)
+    card(s, network_card)
+    section(s, network_card.x + pad, network_card.y + pad, "Delivery Network", "see Delivery page for details")
+    draw_network_map(st, s, r,
+                     pygame.Rect(network_card.x + pad + 10, network_card.y + pad + 36,
+                                 network_card.width - pad * 2 - 160, network_card.height - pad * 2 - 50),
                      detailed=False)
-    pygame.draw.line(s, HAIRLINE, (672, KITCHEN.y), (672, KITCHEN.bottom))
-    hline(s, M, W - M, KITCHEN.bottom + 8)
-    pygame.draw.line(s, HAIRLINE, (936, SCHEDULE.y), (936, SCHEDULE.bottom))
-    draw_schedule(st, s, r, SCHEDULE)
-    draw_orders(st, s, r, ORDERS)
+
+    # Bottom row: schedule card + orders card
+    sched_top = CONTENT_TOP + 6 + 340 + 10
+    sched_card = pygame.Rect(M, sched_top, 912, CONTENT_BOTTOM - sched_top - 6)
+    card(s, sched_card)
+    orders_card = pygame.Rect(M + 930, sched_top, W - M - 930 - M, CONTENT_BOTTOM - sched_top - 6)
+    card(s, orders_card)
+    draw_schedule(st, s, r, sched_card.inflate(-pad * 2, -pad * 2).move(0, 0))
+    draw_orders(st, s, r, orders_card.inflate(-pad * 2, -pad * 2).move(0, 0))
 
 
 def task_tooltip(st, r, task_id):

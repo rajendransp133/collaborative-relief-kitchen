@@ -1,8 +1,11 @@
-"""Colours, fonts and small drawing helpers for the visualiser.
+"""Ant Design-inspired colour tokens and drawing utilities.
 
-Light "report" style: warm off-white paper, ink text, hairline dividers, one accent colour
-(ink-blue) for the time cursor and selection, and brick red reserved for problems.
-Data colours are desaturated so that no single order shouts.
+Primary palette follows antd v5 design tokens:
+  colorPrimary      #1677FF   colorError    #FF4D4F
+  colorSuccess      #52C41A   colorWarning  #FAAD14
+  colorText         #262626   colorTextSecondary #8C8C8C
+  colorBgContainer  #FFFFFF   colorBgLayout #F5F5F5
+  colorBorder       #D9D9D9   colorBorderSecondary #F0F0F0
 """
 
 from __future__ import annotations
@@ -13,57 +16,69 @@ import pygame
 import pygame.gfxdraw as gfx
 
 
-def hex_rgb(h: str) -> tuple[int, int, int]:
+def hex_rgb(h: str) -> tuple:
     h = h.lstrip("#")
     return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
 
 
-PAPER = hex_rgb("#F7F6F2")
-SURFACE = hex_rgb("#FFFFFF")
-BAND = hex_rgb("#FAF9F6")  # alternate table / chart rows
-HAIRLINE = hex_rgb("#E2DED6")
-GRID = hex_rgb("#EFECE6")
-INK = hex_rgb("#1F2328")
-MUTED = hex_rgb("#6B6F76")
-FAINT = hex_rgb("#A3A7AD")
-ACCENT = hex_rgb("#2F5D9F")
-ERROR = hex_rgb("#B5523B")
-OK = hex_rgb("#4F7A45")
-HIGHLIGHT = hex_rgb("#EFEBE2")
-WALL = hex_rgb("#ECE8E0")
-ROAD = hex_rgb("#D3CFC6")
+# ── colour tokens ────────────────────────────────────────────────────────────
+PAPER     = hex_rgb("#F5F5F5")   # colorBgLayout
+SURFACE   = hex_rgb("#FFFFFF")   # colorBgContainer
+BAND      = hex_rgb("#FAFAFA")   # table alternate row / card section bg
+HAIRLINE  = hex_rgb("#F0F0F0")   # colorBorderSecondary
+GRID      = hex_rgb("#F5F5F5")
+INK       = hex_rgb("#262626")   # colorText
+MUTED     = hex_rgb("#8C8C8C")   # colorTextSecondary
+FAINT     = hex_rgb("#BFBFBF")   # colorTextDisabled
+ACCENT    = hex_rgb("#1677FF")   # colorPrimary
+ERROR     = hex_rgb("#FF4D4F")   # colorError
+OK        = hex_rgb("#52C41A")   # colorSuccess
+HIGHLIGHT = hex_rgb("#E6F4FF")   # colorPrimaryBg (hover / selected bg)
+WALL      = hex_rgb("#FAFAFA")
+ROAD      = hex_rgb("#D9D9D9")   # colorBorder
 
-ORDER_COLORS = [hex_rgb(c) for c in ("#B5523B", "#4A6FA5", "#C08A2E", "#6A8F5B", "#7D5C8C", "#3C8C88",
-                                      "#8C6A4F", "#5E7C8A")]
+# Ant Design preset colour palette (one per order)
+ORDER_COLORS = [hex_rgb(c) for c in (
+    "#1677FF",  # blue
+    "#52C41A",  # green
+    "#FAAD14",  # gold
+    "#FF4D4F",  # red
+    "#722ED1",  # purple
+    "#13C2C2",  # cyan
+    "#FA8C16",  # orange
+    "#EB2F96",  # magenta
+)]
 
-# Station colours follow HACCP colour coding used in commercial kitchens: brown for stores / root
-# vegetables, green for vegetable prep, yellow for cooked ready-to-eat food (packing), purple for
-# allergen-free. Heat zones (stove, steamer) use warm red / amber as on kitchen floor plans.
-# station type -> (fill, outline / strong colour)
+# Station colours → (background, accent) from antd preset colour bg/text pairs
 STATION_STYLE = {
-    "storage": (hex_rgb("#EAD9C6"), hex_rgb("#B98B5E")),
-    "prep": (hex_rgb("#DCEBD8"), hex_rgb("#5E9E5A")),
-    "stove": (hex_rgb("#F6D9CF"), hex_rgb("#D0593A")),
-    "steamer": (hex_rgb("#F7E3C4"), hex_rgb("#D98E2B")),
-    "packaging": (hex_rgb("#F6EDC2"), hex_rgb("#C9A51E")),
-    "dispatch": (hex_rgb("#DDE5EA"), hex_rgb("#5F7A8C")),
+    "storage":   (hex_rgb("#FFF7E6"), hex_rgb("#FA8C16")),  # orange-1 / -6
+    "prep":      (hex_rgb("#F6FFED"), hex_rgb("#52C41A")),  # green-1  / -6
+    "stove":     (hex_rgb("#FFF1F0"), hex_rgb("#FF4D4F")),  # red-1    / -5
+    "steamer":   (hex_rgb("#FFFBE6"), hex_rgb("#FAAD14")),  # yellow-1 / -6
+    "packaging": (hex_rgb("#F0F5FF"), hex_rgb("#2F54EB")),  # geekblue-1 / -6
+    "dispatch":  (hex_rgb("#E6FFFB"), hex_rgb("#13C2C2")),  # cyan-1   / -6
 }
-STATION_NAME = {"storage": "Storage shelf", "prep": "Prep counter", "stove": "Stove", "steamer": "Steamer",
-                "packaging": "Packing table", "dispatch": "Dispatch door"}
-ZONE_NAME = {"storage": "Storage zone", "prep": "Preparation zone", "stove": "Cooking zone",
-             "steamer": "Cooking zone", "packaging": "Packing zone", "dispatch": "Dispatch"}
-ALLERGEN_FREE = hex_rgb("#7B5EA7")  # HACCP purple
+STATION_NAME = {
+    "storage": "Storage shelf", "prep": "Prep counter", "stove": "Stove",
+    "steamer": "Steamer", "packaging": "Packing table", "dispatch": "Dispatch door",
+}
+ZONE_NAME = {
+    "storage": "Storage zone", "prep": "Preparation zone",
+    "stove": "Cooking zone", "steamer": "Cooking zone",
+    "packaging": "Packing zone", "dispatch": "Dispatch",
+}
+ALLERGEN_FREE = hex_rgb("#722ED1")   # purple (HACCP allergen-free)
+FAILED_STYLE  = (hex_rgb("#FAFAFA"), hex_rgb("#D9D9D9"))
 
 
+# ── colour helpers ───────────────────────────────────────────────────────────
 def mix(a, b, t: float):
-    """Blend colour a towards b by t (0..1)."""
     return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
 
 
-FAILED_STYLE = (hex_rgb("#ECEAE6"), hex_rgb("#C9C5BE"))
-
+# ── fonts ─────────────────────────────────────────────────────────────────────
 _FONTS: dict = {}
-_FAMILY = "inter,segoeui,helveticaneue,helvetica,dejavusans,arial"
+_FAMILY = "segoeui,inter,helveticaneue,helvetica,dejavusans,arial"
 
 
 def font(size: int, bold: bool = False) -> pygame.font.Font:
@@ -86,7 +101,6 @@ def text_width(s: str, size: int, bold: bool = False) -> int:
 
 
 def fit(s: str, size: int, width: int, bold: bool = False) -> str:
-    """Truncate with an ellipsis so the text fits in `width` pixels."""
     if text_width(s, size, bold) <= width:
         return s
     while s and text_width(s + "…", size, bold) > width:
@@ -94,7 +108,7 @@ def fit(s: str, size: int, width: int, bold: bool = False) -> str:
     return s + "…"
 
 
-def wrap(s: str, size: int, width: int) -> list[str]:
+def wrap(s: str, size: int, width: int) -> list:
     words, lines, cur = s.split(), [], ""
     for w in words:
         trial = f"{cur} {w}".strip()
@@ -107,13 +121,15 @@ def wrap(s: str, size: int, width: int) -> list[str]:
     return lines + ([cur] if cur else [])
 
 
+# ── section heading ───────────────────────────────────────────────────────────
 def section(surf, x, y, title, caption=""):
-    """Small uppercase section label with an optional muted caption after it."""
-    r = text(surf, title.upper(), (x, y), 11, INK, True)
+    """Ant Design card section heading — bold title with faint caption."""
+    r = text(surf, title, (x, y), 14, INK, True)
     if caption:
-        text(surf, caption, (r.right + 10, y), 11, FAINT)
+        text(surf, caption, (r.right + 10, y + 1), 11, FAINT)
 
 
+# ── line helpers ──────────────────────────────────────────────────────────────
 def hline(surf, x0, x1, y, color=HAIRLINE):
     pygame.draw.line(surf, color, (x0, y), (x1, y), 1)
 
@@ -139,17 +155,41 @@ def aaline(surf, color, a, b, width=1):
         pygame.draw.line(surf, color, a, b, width)
 
 
+# ── shape helpers ─────────────────────────────────────────────────────────────
 def disc(surf, color, center, r):
-    """Anti-aliased filled circle."""
     x, y, r = int(round(center[0])), int(round(center[1])), int(round(r))
     gfx.aacircle(surf, x, y, r, color)
     gfx.filled_circle(surf, x, y, r, color)
 
 
 def ring(surf, color, center, r, fill=SURFACE):
-    """Anti-aliased circle outline (2 px) around a filled centre."""
     x, y, r = int(round(center[0])), int(round(center[1])), int(round(r))
     gfx.filled_circle(surf, x, y, r, color)
     gfx.aacircle(surf, x, y, r, color)
     gfx.filled_circle(surf, x, y, r - 2, fill)
     gfx.aacircle(surf, x, y, r - 2, fill)
+
+
+def card(surf, rect: pygame.Rect, radius: int = 8) -> None:
+    """Ant Design card: white bg, light border, two-layer drop shadow."""
+    for dy, alpha, pad in ((4, 10, 6), (2, 16, 2)):
+        sh = pygame.Surface((rect.width + pad * 2, rect.height + pad * 2), pygame.SRCALPHA)
+        pygame.draw.rect(
+            sh, (*INK, alpha),
+            pygame.Rect(pad // 2, pad // 2 + dy, rect.width + pad, rect.height + pad),
+            border_radius=radius + pad // 2,
+        )
+        surf.blit(sh, (rect.x - pad, rect.y - pad))
+    pygame.draw.rect(surf, SURFACE, rect, border_radius=radius)
+    pygame.draw.rect(surf, HAIRLINE, rect, 1, border_radius=radius)
+
+
+def tag(surf, label: str, center, size=11, color=ACCENT, bg=HIGHLIGHT, radius=4) -> pygame.Rect:
+    """Ant Design Tag component."""
+    tw = text_width(label, size) + 14
+    r = pygame.Rect(0, 0, tw, 20)
+    r.center = center
+    pygame.draw.rect(surf, bg, r, border_radius=radius)
+    pygame.draw.rect(surf, color, r, 1, border_radius=radius)
+    text(surf, label, r.center, size, color, anchor="center")
+    return r

@@ -10,7 +10,7 @@ from ..env.road_network import road_between
 from ..env.scenario import clock
 from ..search_csp.allocation import UNLOAD_MINUTES
 from .state import ViewState
-from .theme import (ACCENT, ERROR, FAINT, HAIRLINE, INK, MUTED, OK, PAPER, ROAD, SURFACE, dashed, disc, fit,
+from .theme import (ACCENT, ERROR, FAINT, HAIRLINE, INK, MUTED, OK, PAPER, ROAD, SURFACE, card, dashed, disc, fit,
                     hline, ring, section, text)
 from .widgets import CONTENT_BOTTOM, CONTENT_TOP, M, W, meter
 
@@ -129,10 +129,19 @@ def draw_network_map(st: ViewState, s, r, area: pygame.Rect, detailed: bool = Tr
 
 
 def draw_delivery_page(st: ViewState, s, r):
-    section(s, M, CONTENT_TOP, "Delivery network", "weighted road graph  ·  A* routes  ·  hover places, roads, vehicles")
-    draw_network_map(st, s, r, pygame.Rect(M + 40, CONTENT_TOP + 60, 700, CONTENT_BOTTOM - CONTENT_TOP - 120))
-    pygame.draw.line(s, HAIRLINE, (928, CONTENT_TOP), (928, CONTENT_BOTTOM))
-    right = pygame.Rect(948, CONTENT_TOP, W - M - 948, CONTENT_BOTTOM - CONTENT_TOP)
+    pad = 12
+    left_card = pygame.Rect(M, CONTENT_TOP + 8, 892, CONTENT_BOTTOM - CONTENT_TOP - 16)
+    card(s, left_card)
+    section(s, left_card.x + pad, left_card.y + pad,
+            "Delivery Network", "weighted road graph  ·  A* routes  ·  hover places, roads, vehicles")
+    draw_network_map(st, s, r,
+                     pygame.Rect(left_card.x + pad + 20, left_card.y + pad + 42,
+                                 left_card.width - pad * 2 - 40,
+                                 left_card.height - pad * 2 - 60))
+    right_card = pygame.Rect(920, CONTENT_TOP + 8, W - M - 920, CONTENT_BOTTOM - CONTENT_TOP - 16)
+    card(s, right_card)
+    right = pygame.Rect(right_card.x + pad, right_card.y + pad,
+                        right_card.width - pad * 2, right_card.height - pad * 2)
     y = draw_delivery_table(st, s, r, right)
     y = draw_vehicle_panel(st, s, r, pygame.Rect(right.x, y + 18, right.width, 200))
     draw_roads_panel(st, s, r, pygame.Rect(right.x, y + 18, right.width, right.bottom - y - 18))

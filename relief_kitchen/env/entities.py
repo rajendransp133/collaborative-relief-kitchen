@@ -7,8 +7,9 @@ Times are minutes after the scenario's start clock (e.g. 0 = 08:00); quantities 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Tuple
 
-Cell = tuple[int, int]  # (row, col) on the kitchen grid
+Cell = Tuple[int, int]  # (row, col) on the kitchen grid
 
 
 @dataclass

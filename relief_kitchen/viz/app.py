@@ -132,7 +132,19 @@ def main(argv=None):
         os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
     pygame.init()
     pygame.display.set_caption("Relief Kitchen – Module 1")
-    screen = pygame.display.set_mode((W, H))
+
+    # Internal canvas always renders at the design resolution (W×H).
+    # The OS window is resizable; each frame the canvas is scaled to fit.
+    canvas = pygame.Surface((W, H))
+
+    if args.screenshot:
+        screen = pygame.display.set_mode((W, H))
+    else:
+        info = pygame.display.Info()
+        init_w = int(info.current_w * 0.85)
+        init_h = int(info.current_h * 0.85)
+        screen = pygame.display.set_mode((init_w, init_h), pygame.RESIZABLE)
+
     st = new_state(args.scenario, args.page)
     frame_clock = pygame.time.Clock()
 
@@ -148,10 +160,10 @@ def main(argv=None):
         if args.select:
             st.selected = args.select
         if args.hover:
-            draw(st, screen)  # first pass records the hover targets
+            draw(st, canvas)
             st.mouse = tuple(int(v) for v in args.hover.split(","))
-        draw(st, screen)
-        pygame.image.save(screen, args.screenshot)
+        draw(st, canvas)
+        pygame.image.save(canvas, args.screenshot)
         print(f"saved {args.screenshot}")
         pygame.quit()
         return
@@ -159,10 +171,24 @@ def main(argv=None):
     running = True
     while running:
         dt = frame_clock.tick(60) / 1000.0
+
+        # Read size once per frame — it can change mid-frame on RESIZABLE windows
+        win_size = screen.get_size()
+        win_w, win_h = win_size
+        sx = W / max(1, win_w)
+        sy = H / max(1, win_h)
+
         for ev in pygame.event.get():
+            if hasattr(ev, 'pos'):
+                attrs = dict(ev.dict)
+                attrs['pos'] = (int(ev.pos[0] * sx), int(ev.pos[1] * sy))
+                ev = pygame.event.Event(ev.type, attrs)
             running = handle_event(st, ev) and running
+
         tick(st, dt)
-        draw(st, screen)
+        draw(st, canvas)
+        # Always re-read size before blitting in case a resize happened this frame
+        screen.blit(pygame.transform.smoothscale(canvas, screen.get_size()), (0, 0))
         pygame.display.flip()
     pygame.quit()
     sys.exit(0)

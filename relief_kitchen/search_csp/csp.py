@@ -22,7 +22,8 @@ backtrack. Copying all domains at every node would be far slower. The mutation s
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
+from typing import Callable
 from dataclasses import dataclass, field, replace
 
 CATEGORIES = ("ingredients", "equipment", "staff", "time", "transport", "dietary", "safety", "collision",

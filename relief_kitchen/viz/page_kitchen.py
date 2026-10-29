@@ -11,7 +11,7 @@ from ..search_csp.kitchen_flow import (STAGE_VERB, agent_activity, batch_journey
 from ..search_csp.motion import agent_position, agent_trail
 from .state import ViewState
 from .theme import (ACCENT, ALLERGEN_FREE, ERROR, FAILED_STYLE, FAINT, GRID, HAIRLINE, INK, MUTED, STATION_NAME,
-                    STATION_STYLE, SURFACE, WALL, ZONE_NAME, disc, fit, hline, mix, section, text)
+                    STATION_STYLE, SURFACE, WALL, ZONE_NAME, card, disc, fit, hline, mix, section, text)
 from .widgets import CONTENT_BOTTOM, CONTENT_TOP, M, W, meter
 
 TOKEN_LETTER = {"storage": "I", "prep": "P", "stove": "C", "steamer": "C", "packaging": "K", "dispatch": "K"}
@@ -168,15 +168,21 @@ def draw_kitchen_map(st: ViewState, s, r, rect: pygame.Rect, detailed: bool = Tr
 # ---------------------------------------------------------------------------------------------
 def draw_kitchen_page(st: ViewState, s, r):
     sc = r.scenario
-    left = pygame.Rect(M, CONTENT_TOP, 880, CONTENT_BOTTOM - CONTENT_TOP)
-    section(s, left.x, left.y, "Kitchen floor", "hover a station, agent or food batch for details")
+    pad = 12
+    left_card = pygame.Rect(M, CONTENT_TOP + 8, 892, CONTENT_BOTTOM - CONTENT_TOP - 16)
+    card(s, left_card)
+    left = left_card.inflate(-pad * 2, -pad * 2)
+    left.topleft = (left_card.x + pad, left_card.y + pad)
+    section(s, left.x, left.y, "Kitchen Floor", "hover a station, agent or food batch for details")
     map_rect = pygame.Rect(left.x, left.y + 24, left.width, 450)
     ox, oy, cell = draw_kitchen_map(st, s, r, map_rect, detailed=True)
     y = oy + cell * sc.kitchen.height + 10
     draw_legend(s, left.x, y)
     draw_station_strip(st, s, r, pygame.Rect(left.x, y + 26, left.width, left.bottom - y - 26))
-    pygame.draw.line(s, HAIRLINE, (928, CONTENT_TOP), (928, CONTENT_BOTTOM))
-    right = pygame.Rect(948, CONTENT_TOP, W - M - 948, CONTENT_BOTTOM - CONTENT_TOP)
+    right_card = pygame.Rect(920, CONTENT_TOP + 8, W - M - 920, CONTENT_BOTTOM - CONTENT_TOP - 16)
+    card(s, right_card)
+    right = right_card.inflate(-pad * 2, -pad * 2)
+    right.topleft = (right_card.x + pad, right_card.y + pad)
     y = draw_stock_panel(st, s, r, right)
     draw_batch_panel(st, s, r, pygame.Rect(right.x, y + 14, right.width, right.bottom - y - 14))
 
