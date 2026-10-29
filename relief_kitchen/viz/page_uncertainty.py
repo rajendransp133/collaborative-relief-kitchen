@@ -36,7 +36,7 @@ def timeline(st: ViewState):
     if key not in _CACHE:
         if len(_CACHE) > 16:
             _CACHE.clear()
-        _CACHE[key] = (belief_timeline([x.scenario for x in st.steps]), list(st.steps))  # keep refs alive
+        _CACHE[key] = (belief_timeline(st.steps), list(st.steps))  # keep refs alive
     return _CACHE[key][0]
 
 
@@ -57,7 +57,7 @@ def draw_uncertainty_page(st: ViewState, s, r):
     now, prev = steps[i], steps[i - 1] if i else None
     belief = pygame.Rect(LEFT.x, LEFT.y, LEFT.width, 52 + BELIEF_ROW * len(now.probs) + 10)
     draw_beliefs(st, s, now, belief)
-    bayes_h = 52 + 40 * max(1, len(now.updates)) + 10
+    bayes_h = 52 + 40 * max(1, len(now.updates)) + 28 * stock_rows(now) + 10
     chart = pygame.Rect(LEFT.x, belief.bottom + GAP, LEFT.width, LEFT.bottom - belief.bottom - 2 * GAP - bayes_h)
     draw_chart(st, s, steps, i, chart)
     draw_bayes(st, s, now, i, pygame.Rect(LEFT.x, chart.bottom + GAP, LEFT.width, bayes_h))
@@ -143,14 +143,19 @@ def draw_chart(st: ViewState, s, steps, cur, box):
         lx = r.x - 34
 
 
+def stock_rows(now) -> int:
+    """Lines the stock check adds to the Bayes panel: one per changed shelf, plus the verdict."""
+    return len(now.stock.changes) + 1 if now.stock.changes or now.stock.short_orders else 0
+
+
 def draw_bayes(st: ViewState, s, now, i, box):
     label = st.steps[i].label if 0 < i < len(st.steps) else ""
     y = panel(s, box, "Bayes update", f"step {i} · {label}" if label else "prior")
     x = box.x + PAD
     if i == 0:
         text(s, f"Every resource starts at P = {PRIOR:.2f}.", (x, y + 4), 14, SUBTLE)
-        return
-    if not now.updates:
+        y += 40
+    elif not now.updates and not stock_rows(now):
         text(s, "No disruption observed at this step; the belief is unchanged.", (x, y + 4), 14, SUBTLE)
         return
     f, o = P_OBS_GIVEN_FAIL, P_OBS_GIVEN_OK
@@ -166,6 +171,21 @@ def draw_bayes(st: ViewState, s, now, i, box):
                   weight="semibold")
         text(s, f"was {prior:.3f}", (box.right - PAD, y + 12), 13, MUTED, anchor="topright")
         y += 40
+    if not stock_rows(now):
+        return
+    # a stock count is a fact, so it is checked against M1's plan instead of going through Bayes
+    for shelf, ing, before, after in now.stock.changes:
+        draw_line(s, DIVIDER, (x, y), (box.right - PAD, y))
+        draw_rect(s, var_colour("supply_ok"), (x, y + 10, 8, 8), border_radius=2)
+        text(s, "Stock count", (x + 16, y + 5), 15, INK, weight="semibold")
+        text(s, f"{shelf} {ing}: {before:g} → {after:g} kg", (x + 110, y + 6), 14, SUBTLE, mono=True)
+        y += 28
+    draw_line(s, DIVIDER, (x, y), (box.right - PAD, y))
+    if now.stock.short_orders:
+        msg, colour = f"Counted, not guessed: M1 cannot cook {', '.join(now.stock.short_orders)} → Supply = 1.00", ERROR
+    else:
+        msg, colour = f"Counted, not guessed: M1 still cooks every order → Supply stays {PRIOR:.2f}", OK
+    text(s, fit(msg, 14, box.right - PAD - x), (x, y + 6), 14, colour)
 
 
 def draw_risk(st: ViewState, s, now, prev, rect) -> int:
@@ -229,7 +249,8 @@ def belief_tooltip(st, r, var):
     name, meaning, _c = VARS.get(var, (var, "", MUTED))
     lines = [("title", f"{name}  ·  P = {steps[i].probs[var]:.3f}"), ("sub", f"{var}: probability that {meaning}"),
              ("kv", "Prior", f"{PRIOR:.2f}"),
-             ("kv", "Likelihood", f"P(signal | disrupted) = {P_OBS_GIVEN_FAIL:.2f}, P(signal | ok) = {P_OBS_GIVEN_OK:.2f}"),
+             ("kv", "Likelihood", f"P(signal | disrupted) = {P_OBS_GIVEN_FAIL:.2f}, P(signal | ok) = {P_OBS_GIVEN_OK:.2f}")
+             if var != "supply_ok" else ("kv", "Update", "stock counts are facts: 1.00 while M1 rejects an order for ingredients"),
              ("kv", "Threshold", f"{THRESHOLD:.2f} (contingencies)"), ("rule",), ("head", "Over the timeline")]
     for k, step in enumerate(steps):
         label = "prior" if k == 0 else st.steps[k].label
