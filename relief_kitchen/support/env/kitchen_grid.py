@@ -4,7 +4,7 @@ The map is ASCII art:
 
     #  wall            .  floor
     S  storage shelf   P  preparation counter
-    C  stove           T  steamer
+    C  stove
     K  packaging table D  dispatch door
 
 Station cells are not walkable. An agent works a station from its *access cell*, a neighbouring
@@ -17,11 +17,11 @@ from dataclasses import dataclass, field
 
 from .entities import Cell, Station
 
-STATION_CHARS = {"S": "storage", "P": "prep", "C": "stove", "T": "steamer", "K": "packaging", "D": "dispatch"}
+STATION_CHARS = {"S": "storage", "P": "prep", "C": "stove", "K": "packaging", "D": "dispatch"}
 WALK_SECONDS = 20  # time for one grid step (also the animation step)
 HANDLING_MINUTES = 1  # picking a batch up or putting it down
 
-ID_PREFIX = {"storage": "S", "prep": "P", "stove": "C", "steamer": "T", "packaging": "K", "dispatch": "D"}
+ID_PREFIX = {"storage": "S", "prep": "P", "stove": "C", "packaging": "K", "dispatch": "D"}
 
 
 @dataclass

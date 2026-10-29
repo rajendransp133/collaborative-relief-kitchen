@@ -39,13 +39,13 @@ def compatible_variants(sc: Scenario, order: Order) -> list[Recipe]:
 
 def cook_stage(sc: Scenario) -> str:
     for s in sc.stages:
-        if s.station_type in ("stove", "steamer") or s.skill == "cook":
+        if s.station_type == "stove" or s.skill == "cook":
             return s.name
     return sc.stages[-1].name
 
 
 def stage_station_types(sc: Scenario, stage) -> set[str]:
-    """Every station type a stage can use, over all recipes (e.g. cook: stove or steamer)."""
+    """Every station type a stage can use, over all recipes (the stage's own, plus any recipe override)."""
     return {stage.station_type} | {recipe_station(r, stage) for r in sc.recipes.values()}
 
 

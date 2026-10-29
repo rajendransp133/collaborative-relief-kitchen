@@ -97,8 +97,11 @@ class Plan:
 _counter = 0
 
 
-def pop(init: frozenset[str], goal: frozenset[str], operators: list[Operator]) -> Plan:
-    """Run Partial-Order Planning; return a complete Plan."""
+def pop(init: frozenset[str], goal: frozenset[str], operators: list[Operator], trace: list | None = None) -> Plan:
+    """Run Partial-Order Planning; return a complete Plan.
+
+    With `trace`, one record per iteration is appended:
+    (consumer, condition, achiever, reused, [(threat, "demote" | "promote"), ...])."""
     global _counter
     _counter = 0
 
@@ -118,6 +121,7 @@ def pop(init: frozenset[str], goal: frozenset[str], operators: list[Operator]) -
 
         # --- step 2: find an existing achiever or instantiate a new one ---
         achiever: Optional[Step] = None
+        reused = True
         for sid, step in plan.steps.items():
             if sid != consumer_id and step.achieves(need):
                 if not plan.before(consumer_id, sid):   # ordering wouldn't cycle
@@ -125,6 +129,7 @@ def pop(init: frozenset[str], goal: frozenset[str], operators: list[Operator]) -
                     break
 
         if achiever is None:               # no existing step → add a new one
+            reused = False
             op = next((o for o in operators if need in o.add), None)
             if op is None:
                 raise ValueError(f"No operator achieves condition: {need!r}")
@@ -137,13 +142,18 @@ def pop(init: frozenset[str], goal: frozenset[str], operators: list[Operator]) -
         plan.orderings.add((achiever.id, consumer_id))
 
         # --- step 3: resolve threats on the new causal link ---
+        resolved = []
         for sid, step in list(plan.steps.items()):
             if sid in (achiever.id, consumer_id):
                 continue
             if step.threatens(need):
                 if not plan.before(consumer_id, sid):   # demote: put threat after consumer
                     plan.orderings.add((consumer_id, sid))
+                    resolved.append((sid, "demote"))
                 elif not plan.before(sid, achiever.id): # promote: put threat before achiever
                     plan.orderings.add((sid, achiever.id))
+                    resolved.append((sid, "promote"))
+        if trace is not None:
+            trace.append((consumer_id, need, achiever.id, reused, resolved))
 
     return plan

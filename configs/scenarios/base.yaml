@@ -11,19 +11,17 @@ food_safety:
   max_hold_minutes: 150   # cooked food must be served within 2.5 h
 
 kitchen:
-  # S shelf, P prep counter, C stove, T steamer, K packaging, D dispatch door, # wall/pillar
+  # S shelf, P prep counter, C stove, K packaging, D dispatch door, # wall/pillar
   map:
     - "################"
     - "#S.S.S.....K.K.#"
     - "#..............#"
     - "#.P.P.....###..#"
     - "#..............D"
-    - "#.C.C.CT.......#"
+    - "#.C.C.C........#"
     - "#......#.......#"
     - "#..............#"
     - "################"
-  access:
-    T1: [6, 6]   # the steamer is reached from the same cell as stove C3 (narrow workspace)
   stations:
     S1: {stock: {rice: 40, lentils: 15}}
     S2: {stock: {millet: 12, wheat: 20, vegetables: 30}}
@@ -31,7 +29,6 @@ kitchen:
     C1: {max_batch: 60}
     C2: {max_batch: 60}
     C3: {max_batch: 30}
-    T1: {max_batch: 60}
 
 agents:
   Anu:   {kind: human, skills: [cook, prep], home: [7, 1]}
@@ -69,7 +66,6 @@ recipes:
     name: Idli sambar
     tags: [vegetarian, soft, infant]
     per_meal: {rice: 0.1, lentils: 0.05}
-    overrides: {cook: {station: steamer, minutes: 30}}
 
 network:
   places:

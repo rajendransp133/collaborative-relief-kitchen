@@ -1,11 +1,14 @@
-"""Pygame visualiser for Module 1 - three pages over the same plan.
+"""Pygame visualiser: three Module 1 pages over the same plan, plus Module 2 and Module 3 pages.
 
     python -m relief_kitchen.viz --scenario configs/scenarios/road_closure.yaml
 
+    Scenarios  every scenario file as a card: click one to load it, then open a page
     Kitchen    floor plan: agents on collision-free paths, food batches carried station to station,
-               live shelf stock, what every station is doing; hover anything for details
+               live shelf stock, what every station is doing; hover for details, click to pin them
     Delivery   road network, A* routes, vehicles in transit, deliveries and vehicle use
     Overview   small maps, the CSP schedule (Gantt) and the orders with their diagnosis
+    Planning   (M2) the partial-order plan, its schedule and how POP built it
+    Uncertainty (M3) Bayesian belief in disruptions over the timeline, plan risk, contingencies
 
 Style: one `ViewState` record (see `state.py`) holds everything; plain functions update it
 (`handle_event`, `tick`) or read it to paint a page (`draw`). Each page lives in its own module.
@@ -19,17 +22,23 @@ import sys
 
 import pygame
 
+from ..support.env.scenario import Event
 from .page_delivery import draw_delivery_page, place_tooltip, road_tooltip, vehicle_tooltip
 from .page_kitchen import agent_tooltip, batch_tooltip, draw_kitchen_page, station_tooltip
 from .page_overview import draw_overview_page, task_tooltip
+from .page_scenarios import draw_scenarios_page
+from .page_planning import draw_planning_page, step_tooltip
+from .page_uncertainty import belief_tooltip, draw_uncertainty_page
 from .state import (PAGES, ViewState, add_event, current, cycle_selection, end_minute, load, new_state, random_road,
                     random_stove, tick)
 from .theme import ORDER_COLORS, PAPER, set_scale, to_logical
 from .widgets import H, W, busy_note, draw_footer, draw_header, draw_help, draw_tooltip, hovered
 
-PAGE_DRAW = {"kitchen": draw_kitchen_page, "delivery": draw_delivery_page, "overview": draw_overview_page}
+PAGE_DRAW = {"scenarios": draw_scenarios_page, "kitchen": draw_kitchen_page, "delivery": draw_delivery_page, "overview": draw_overview_page,
+             "planning": draw_planning_page, "uncertainty": draw_uncertainty_page}
 TOOLTIPS = {"station": station_tooltip, "agent": agent_tooltip, "batch": batch_tooltip, "place": place_tooltip,
-            "road": road_tooltip, "vehicle": vehicle_tooltip, "task": task_tooltip}
+            "road": road_tooltip, "vehicle": vehicle_tooltip, "task": task_tooltip, "pstep": step_tooltip,
+            "belief": belief_tooltip}
 
 
 def handle_event(st: ViewState, ev) -> bool:
@@ -42,7 +51,8 @@ def handle_event(st: ViewState, ev) -> bool:
         k = ev.key
         if k in (pygame.K_ESCAPE, pygame.K_q):
             return False
-        keys = {pygame.K_k: "kitchen", pygame.K_v: "delivery", pygame.K_o: "overview"}
+        keys = {pygame.K_c: "scenarios", pygame.K_k: "kitchen", pygame.K_v: "delivery", pygame.K_o: "overview", pygame.K_l: "planning",
+                pygame.K_u: "uncertainty"}
         if k in keys:
             st.page = keys[k]
         elif k == pygame.K_SPACE:
@@ -80,14 +90,36 @@ def handle_event(st: ViewState, ev) -> bool:
             toggle_fullscreen()
     if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
         pos = to_logical(ev.pos)
+        hit = False
         for rect, action, value in st.clicks:
             if rect.collidepoint(pos):
+                hit = True
                 if action == "page":
                     st.page = value
                 elif action == "step":
                     st.step = value
                 elif action == "order":
                     st.selected = value
+                elif action == "load" and value != st.path and not st.busy:
+                    load(st, value)
+                    st.minute = 0
+                elif action == "ktab":
+                    st.kitchen_tab = value
+                elif action == "play":
+                    st.playing = not st.playing
+                elif action == "speed":
+                    st.speed = value
+                elif action == "reset":
+                    st.minute = 0
+                elif action == "unpin":
+                    st.pinned = None
+                elif action == "fail" and not st.busy:
+                    add_event(st, lambda sc, sid=value: Event("fail_station", {"station": sid}, f"Station {sid} failed"))
+        if not hit and st.page == "kitchen":
+            st.mouse = pos
+            target = hovered(st)
+            if target and target[0] in ("station", "agent", "batch"):
+                st.pinned = None if target == st.pinned else target  # a second click unpins
         if st.scrub.collidepoint(pos):
             frac = (pos[0] - st.scrub.x) / max(1, st.scrub.width)
             st.minute = max(0.0, min(end_minute(st), frac * st.t_span))
@@ -134,7 +166,7 @@ def toggle_fullscreen():
 
 
 def screenshot(st: ViewState, path: str | None = None):
-    path = path or f"relief_m1_{st.page}_{st.step}.png"
+    path = path or f"relief_{st.page}_{st.step}.png"
     pygame.image.save(st.screen, path)
     st.message = f"Saved {path}"
 
@@ -147,6 +179,12 @@ def draw(st: ViewState, screen):
     screen.fill(PAPER)
     draw_header(st, screen)
     r = current(st)
+    if st.page == "scenarios":
+        draw_scenarios_page(st, screen, r)
+        draw_footer(st, screen)
+        if st.show_help:
+            draw_help(st, screen)
+        return
     if r is None:
         busy_note(st, screen)
         return
@@ -161,14 +199,16 @@ def draw(st: ViewState, screen):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Relief kitchen - Module 1 visualiser")
+    ap = argparse.ArgumentParser(description="Relief kitchen visualiser (Modules 1-3)")
     ap.add_argument("--scenario", default="configs/scenarios/road_closure.yaml")
-    ap.add_argument("--page", choices=PAGES, default="kitchen")
+    ap.add_argument("--page", choices=PAGES, default="scenarios")
     ap.add_argument("--screenshot", help="render one frame to this PNG and exit (works headless)")
     ap.add_argument("--at", default="09:20", help="clock time for --screenshot")
     ap.add_argument("--step", type=int, default=-1, help="timeline step for --screenshot (-1 = last)")
     ap.add_argument("--select", help="order to select for --screenshot")
     ap.add_argument("--hover", help="mouse position x,y for --screenshot (shows that tooltip)")
+    ap.add_argument("--pin", help="kitchen item to pin for --screenshot: station:C2, agent:Anu or batch:O1:1")
+    ap.add_argument("--tab", choices=("batches", "stock"), help="kitchen list tab for --screenshot")
     ap.add_argument("--scale", type=float, default=2.0, help="resolution multiplier for --screenshot")
     args = ap.parse_args(argv)
 
@@ -177,7 +217,7 @@ def main(argv=None):
     else:
         enable_dpi_awareness()
     pygame.init()
-    pygame.display.set_caption("Relief Kitchen – Module 1")
+    pygame.display.set_caption("Relief Kitchen")
     if args.screenshot:
         screen = pygame.display.set_mode((round(W * args.scale), round(H * args.scale)))
     else:
@@ -197,6 +237,15 @@ def main(argv=None):
         st.playing = False
         if args.select:
             st.selected = args.select
+        if args.pin:
+            kind, _, rest = args.pin.partition(":")
+            if kind == "batch":
+                order, _, batch = rest.partition(":")
+                st.pinned = (kind, (order, int(batch)))
+            else:
+                st.pinned = (kind, rest)
+        if args.tab:
+            st.kitchen_tab = args.tab
         if args.hover:
             draw(st, screen)  # first pass records the hover targets
             st.mouse = tuple(int(v) for v in args.hover.split(","))

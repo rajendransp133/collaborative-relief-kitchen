@@ -25,7 +25,7 @@ class Agent:
 @dataclass
 class Station:
     id: str
-    type: str  # storage, prep, stove, steamer, packaging, dispatch
+    type: str  # storage, prep, stove, packaging, dispatch
     cell: Cell
     access: Cell | None = None  # floor cell an agent stands on to use it
     max_batch: int = 10_000  # equipment capacity (meals per batch)
@@ -94,7 +94,7 @@ def recipe_satisfies(recipe: Recipe, diet: set[str]) -> bool:
 
 
 def recipe_station(recipe: Recipe, stage: Stage) -> str:
-    """Station type the recipe needs for a stage (e.g. idli is cooked in a steamer)."""
+    """Station type the recipe needs for a stage (a recipe may override a stage's station)."""
     return recipe.overrides.get(stage.name, {}).get("station", stage.station_type)
 
 

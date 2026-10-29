@@ -12,7 +12,6 @@ def result():
 
 @pytest.mark.parametrize("order,category", [
     ("O2", "transport"),    # every road to the stadium is closed
-    ("O3", "equipment"),    # the steamer has failed
     ("O4", "ingredients"),  # millet is out of stock
     ("O5", "staff"),        # cooks are off shift
     ("O6", "time"),         # deadline before the earliest possible arrival

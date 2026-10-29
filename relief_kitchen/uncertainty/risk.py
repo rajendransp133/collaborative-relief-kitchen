@@ -35,12 +35,15 @@ def estimate_risk(steps: list[str], belief: Belief) -> float:
     return round(1.0 - p_all_ok, 4)
 
 
-def monte_carlo_risk(steps: list[str], belief: Belief, n: int = 500) -> float:
-    """Sample n worlds; return fraction where at least one critical step fails."""
+def monte_carlo_risk(steps: list[str], belief: Belief, n: int = 500, rng: random.Random | None = None) -> float:
+    """Sample n worlds; return fraction where at least one critical step fails.
+
+    `rng` (e.g. random.Random(0)) makes the estimate reproducible."""
+    rng = rng or random
     failures = 0
     for _ in range(n):
         # Sample a concrete world state
-        world = {var: (random.random() < prob) for var, prob in belief.probs.items()}
+        world = {var: (rng.random() < prob) for var, prob in belief.probs.items()}
         for step in steps:
             var, _ = STEP_RISK.get(step, (None, 0.0))
             if var is not None and world.get(var, False):

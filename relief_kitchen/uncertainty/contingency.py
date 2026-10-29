@@ -8,7 +8,6 @@ THRESHOLD = 0.4   # probability above which we flag the variable
 
 CONTINGENCIES: dict[str, list[str]] = {
     "stove_ok": [
-        "Reroute batch to steamer (T1) if recipe supports it",
         "Split batch across remaining working stoves",
         "Notify kitchen supervisor and delay affected order",
     ],

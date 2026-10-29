@@ -25,7 +25,7 @@ def enrich(sc: Scenario, alloc: Allocation | None, accepted: list[Order]) -> dic
         ingredient_plan[o.id] = locate_ingredients(sc.kitchen, origin, {i: q * o.meals for i, q in r.per_meal.items()})
     centre = list(sc.agents.values())[len(sc.agents) // 2].home
     nearest = {}
-    for stype in ("storage", "prep", "stove", "steamer", "packaging"):
+    for stype in ("storage", "prep", "stove", "packaging"):
         hit = nearest_station(sc.kitchen, centre, stype)
         nearest[stype] = f"{hit.station.id} ({hit.distance} steps)" if hit else "none working"
     return dict(motion=plan_kitchen_motion(sc, alloc), ingredient_plan=ingredient_plan, nearest=nearest,

@@ -9,10 +9,13 @@ import pygame
 from ..support.env.road_network import road_between
 from ..support.env.scenario import clock
 from ..support.model_helpers import UNLOAD_MINUTES
-from .state import ViewState
-from .theme import (ACCENT, ERROR, FAINT, HAIRLINE, INK, MUTED, OK, PAPER, ROAD, SURFACE, dashed, disc, draw_line,
-                    draw_rect, fit, hline, ring, section, text)
-from .widgets import CONTENT_BOTTOM, CONTENT_TOP, M, W, meter
+from .state import ViewState, sorted_orders
+from .theme import (ACCENT, DIVIDER, ERROR, FAINT, HAIRLINE, INK, MUTED, OK, PAPER, ROAD, SUBTLE, SURFACE, dashed,
+                    disc, draw_line, draw_rect, fit, ring, text)
+from .widgets import CONTENT_BOTTOM, CONTENT_TOP, GAP, LEFT_W, M, PAD, RIGHT_W, RIGHT_X, meter, panel
+
+ORDER_ROW = 50
+VEHICLE_ROW = 52
 
 
 def network_projection(net, area: pygame.Rect):
@@ -81,7 +84,8 @@ def draw_network_map(st: ViewState, s, r, area: pygame.Rect, detailed: bool = Tr
             text(s, f"{road.minutes:g}′", (mx + nx * 12, my + ny * 12), 10 if detailed else 9, FAINT, anchor="center")
         else:
             dashed(s, ERROR, a, b, 2)
-            text(s, f"{road.id} closed", (mx - nx * 14, my - ny * 14), 10, ERROR, True, anchor="center")
+            if detailed:
+                text(s, f"{road.id} closed", (mx - nx * 14, my - ny * 14), 10, ERROR, True, anchor="center")
         orders = used_by.get(road.id, [])
         for i, oid in enumerate(orders):
             off = (i - (len(orders) - 1) / 2) * (5 if detailed else 4)
@@ -129,77 +133,72 @@ def draw_network_map(st: ViewState, s, r, area: pygame.Rect, detailed: bool = Tr
 
 
 def draw_delivery_page(st: ViewState, s, r):
-    section(s, M, CONTENT_TOP, "Delivery network", "weighted road graph  ·  A* routes  ·  hover places, roads, vehicles")
-    draw_network_map(st, s, r, pygame.Rect(M + 40, CONTENT_TOP + 60, 700, CONTENT_BOTTOM - CONTENT_TOP - 120))
-    draw_line(s, HAIRLINE, (928, CONTENT_TOP), (928, CONTENT_BOTTOM))
-    right = pygame.Rect(948, CONTENT_TOP, W - M - 948, CONTENT_BOTTOM - CONTENT_TOP)
-    y = draw_delivery_table(st, s, r, right)
-    y = draw_vehicle_panel(st, s, r, pygame.Rect(right.x, y + 18, right.width, 200))
-    draw_roads_panel(st, s, r, pygame.Rect(right.x, y + 18, right.width, right.bottom - y - 18))
+    net = r.scenario.roads
+    closed = [rd.id for rd in net.roads.values() if not rd.open]
+    note = f"{', '.join(closed)} closed" if closed else f"{len(net.roads)} roads open"
+    box = pygame.Rect(M, CONTENT_TOP, LEFT_W, CONTENT_BOTTOM - CONTENT_TOP)
+    y0 = panel(s, box, "Delivery network", note, ERROR if closed else MUTED)
+    draw_network_map(st, s, r, pygame.Rect(box.x + PAD + 36, y0 + 24, box.width - 2 * PAD - 200,
+                                           box.bottom - y0 - 80))
+    y = draw_delivery_card(st, s, r, CONTENT_TOP)
+    draw_vehicle_card(st, s, r, y + GAP)
 
 
-def draw_delivery_table(st, s, r, rect) -> int:
+def draw_delivery_card(st, s, r, top) -> int:
     sc = r.scenario
-    section(s, rect.x, rect.y, "Deliveries", "times are wall-clock")
-    y = rect.y + 26
-    cols = (("ORDER", 12), ("VEH", 64), ("LEAVES", 110), ("ARRIVES", 170), ("DUE", 236), ("TO", 290))
-    for label, dx in cols:
-        text(s, label, (rect.x + dx, y), 10, FAINT, True)
-    y += 16
-    hline(s, rect.x, rect.right, y)
-    for d in (r.allocation.deliveries if r.allocation else []):
-        o = next(o for o in sc.orders if o.id == d.order)
-        late = d.arrive > o.deadline
-        disc(s, st.order_color.get(d.order, ACCENT), (rect.x + 4, y + 10), 4)
-        text(s, d.order, (rect.x + 12, y + 3), 12, INK, True)
-        text(s, d.vehicle, (rect.x + 64, y + 3), 12, INK)
-        text(s, clock(sc, d.depart), (rect.x + 110, y + 3), 12, INK)
-        text(s, clock(sc, d.arrive), (rect.x + 170, y + 3), 12, ERROR if late else INK)
-        text(s, clock(sc, o.deadline), (rect.x + 236, y + 3), 12, MUTED)
-        text(s, fit(sc.roads.places[d.destination].label, 12, rect.width - 290), (rect.x + 290, y + 3), 12, INK)
-        st.hover.append((pygame.Rect(rect.x, y, rect.width, 20), "place", d.destination))
-        y += 21
-    for oid, diag in r.diagnoses.items():
-        disc(s, st.order_color.get(oid, ACCENT), (rect.x + 4, y + 10), 4)
-        text(s, oid, (rect.x + 12, y + 3), 12, INK, True)
-        text(s, fit(f"not delivered — {', '.join(diag.categories)}", 12, rect.width - 64), (rect.x + 64, y + 3), 12,
-             ERROR)
-        y += 21
-    return y
+    orders = sorted_orders(r)
+    deliveries = {d.order: d for d in (r.allocation.deliveries if r.allocation else [])}
+    box = pygame.Rect(RIGHT_X, top, RIGHT_W, 52 + ORDER_ROW * len(orders) + 6)
+    n = len(deliveries)
+    y = panel(s, box, "Deliveries", f"{n} of {len(orders)} scheduled")
+    x, right = box.x + PAD, box.right - PAD
+    for o in orders:
+        draw_line(s, DIVIDER, (x, y), (right, y))
+        d = deliveries.get(o.id)
+        place = sc.roads.places[o.destination].label
+        st.hover.append((pygame.Rect(x, y, right - x, ORDER_ROW), "place", o.destination))
+        disc(s, st.order_color.get(o.id, ACCENT), (x + 4, y + 18), 4)
+        t = text(s, o.id, (x + 16, y + 9), 14, INK, weight="semibold")
+        if d:
+            late = d.arrive > o.deadline
+            at = text(s, clock(sc, d.arrive), (right, y + 8), 15, ERROR if late else INK, anchor="topright",
+                      mono=True, weight="semibold")
+            text(s, fit(place, 14, at.x - t.right - 24), (t.right + 10, y + 9), 14, INK)
+            text(s, f"{d.vehicle} · leaves {clock(sc, d.depart)} · {o.meals} meals", (x + 16, y + 29), 12, MUTED)
+            text(s, f"due {clock(sc, o.deadline)}", (right, y + 30), 12, ERROR if late else MUTED,
+                 anchor="topright", mono=True)
+        else:
+            at = text(s, "not delivered", (right, y + 9), 13, ERROR, anchor="topright", weight="semibold")
+            text(s, fit(place, 14, at.x - t.right - 24), (t.right + 10, y + 9), 14, INK)
+            cats = ", ".join(r.diagnoses[o.id].categories) if o.id in r.diagnoses else ""
+            text(s, fit(cats, 12, right - x - 16), (x + 16, y + 29), 12, ERROR)
+        y += ORDER_ROW
+    return box.bottom
 
 
-def draw_vehicle_panel(st, s, r, rect) -> int:
+def draw_vehicle_card(st, s, r, top):
     sc = r.scenario
-    section(s, rect.x, rect.y, "Vehicles", "busy time over the day")
-    y = rect.y + 26
     trips = r.allocation.deliveries if r.allocation else []
     day = max([d.back for d in trips] + [sc.horizon])
-    for vid, v in sorted(sc.vehicles.items()):
+    vehicles = sorted(sc.vehicles.items())
+    box = pygame.Rect(RIGHT_X, top, RIGHT_W, min(CONTENT_BOTTOM - top, 52 + VEHICLE_ROW * len(vehicles) + 6))
+    y = panel(s, box, "Vehicles")
+    x, right = box.x + PAD, box.right - PAD
+    for vid, v in vehicles:
+        if y + VEHICLE_ROW > box.bottom:
+            break
+        draw_line(s, DIVIDER, (x, y), (right, y))
         mine = [d for d in trips if d.vehicle == vid]
         busy = sum(d.back - d.depart for d in mine)
         now = next((d for d in mine if d.depart <= st.minute <= d.back), None)
-        text(s, vid, (rect.x, y), 12, INK, True)
-        text(s, f"{v.capacity} meals · speed ×{v.speed:g}", (rect.x + 30, y + 1), 11, MUTED)
-        state = f"{vehicle_leg(st.minute, now)} ({now.order})" if now else "at the kitchen"
-        text(s, fit(state, 11, 190), (rect.right, y + 1), 11, INK if now else FAINT, anchor="topright")
-        y += 17
-        meter(s, pygame.Rect(rect.x, y + 2, rect.width, 5), busy / day if day else 0, OK)
-        text(s, f"{len(mine)} trip(s), {busy:.0f} min", (rect.x, y + 9), 10, FAINT)
-        y += 26
-    return y
-
-
-def draw_roads_panel(st, s, r, rect):
-    net = r.scenario.roads
-    section(s, rect.x, rect.y, "Roads", "")
-    closed = [rd for rd in net.roads.values() if not rd.open]
-    y = rect.y + 24
-    if not closed:
-        text(s, "All roads open.", (rect.x, y), 12, MUTED)
-        return
-    for rd in closed:
-        text(s, f"{rd.id} closed: {rd.a} – {rd.b} ({rd.minutes:g} min)", (rect.x, y), 12, ERROR)
-        y += 18
+        t = text(s, vid, (x, y + 9), 14, INK, mono=True, weight="semibold")
+        text(s, f"{v.capacity} meals · ×{v.speed:g}", (t.right + 10, y + 10), 13, MUTED)
+        state = f"{vehicle_leg(st.minute, now)} · {now.order}" if now else "at the kitchen"
+        text(s, fit(state, 13, 200), (right, y + 10), 13, SUBTLE if now else MUTED, anchor="topright")
+        bar = pygame.Rect(x, y + 36, right - x - 70, 5)
+        meter(s, bar, busy / day if day else 0, OK)
+        text(s, f"{busy:.0f} min", (right, bar.centery), 12, MUTED, anchor="midright", mono=True)
+        y += VEHICLE_ROW
 
 
 # ---------------------------------------------------------------------------------------------

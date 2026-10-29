@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 
 
 def main(argv=None) -> None:
@@ -17,6 +18,8 @@ def main(argv=None) -> None:
     ap.add_argument("--module", choices=["m1", "m2", "m3"], default="m1", help="which module to run (default: m1)")
     ap.add_argument("--gui", action="store_true", help="open the Pygame visualiser (M1 only)")
     args = ap.parse_args(argv)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")  # M2/M3 print arrows; the Windows default (cp1252) can't
 
     if args.module == "m1":
         if args.gui:
