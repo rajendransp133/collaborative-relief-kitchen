@@ -103,7 +103,7 @@ within **150 minutes**.
 | 2 | `demand_surge` | +80 people, urgent hospital order, stadium order | M1 (priority, diagnosis) | Hospital orders first; O2 (180 meals) and O5 rejected |
 | 3 | `dietary` | none (5 diet-specific orders) | M1 (dietary constraints) | All 5 served with diet-safe menus |
 | 4 | `infeasible` | none (broken from the start) | M1 (diagnosis) | O1 served; 4 orders rejected, one per cause |
-| 5 | `rice_shortage` | rice on S1, then S3, cut to 6 kg | M1 (substitution), M3 (supply belief) | All served; menus switch to millet and roti |
+| 5 | `rice_shortage` | rice on S1, then S3, cut to 6 kg | M1 (substitution), M3 (stock check) | All served; menus switch to millet and roti |
 | 6 | `road_closure` | R7, then R8, close | M1 (A\* reroute), M3 (road belief) | All served; two routes change |
 | 7 | `stove_failure` | C2, then C1, fail | M1 (re-allocation), M3 (stove belief) | C2 out: all served. C1 out too: O2 rejected |
 
@@ -200,8 +200,9 @@ instead: `stove_failure.yaml` step 2, or **Mark as failed** on the Kitchen page.
 All four rejections are "isolated": each order is impossible even on its own. The direct checks in
 `algorithms/diagnosis.py` find each cause without any search.
 
-**M3.** The belief stays at the prior, because the failures are given at the start and are not
-observed as events ([module3.md](module3.md) §10).
+**M3.** Stove and road stay at the prior, because the closed roads are given at the start and are
+not observed as events ([module3.md](module3.md) §10). Supply is **1.0**: the stock check sees that
+M1 rejects O4 for lack of millet. The analytical risk is 0.816 and the supply contingency appears.
 
 **Show in class:** the Overview page, which shows each rejected order with its cause category.
 
@@ -219,9 +220,10 @@ The stock constraint (total use ≤ stock) and the "the shelf holds the main ing
 force these substitutions. The dietary constraint keeps them safe: O1 still gets the diabetic and
 soft recipe.
 
-**M3.** Each stock cut is a supply observation: P(supply) goes 0.05 → 0.486 → 0.945, and the
-analytical risk goes 0.115 → 0.437 → 0.775. At step 1 the supply contingencies appear, including
-"substitute recipe", which is exactly what M1 did.
+**M3.** A stock count is a fact, not a noisy report, so it does not go through Bayes. M3 checks it
+against M1 instead: both times M1 still cooks every order (only 9 kg of the 12 kg is needed), so
+P(supply) stays at 0.05, the risk stays at 0.115 and no contingency appears. The Uncertainty page
+shows each stock count and says why the belief did not move.
 
 **Show in class:** the Kitchen page (the stock bars) and the Uncertainty page (`U`) at step 2.
 
@@ -283,7 +285,7 @@ Event kinds (`support/env/scenario.py`, `apply_event`):
 |---|---|---|
 | `close_road` / `open_road` | `road` | closing → `road_ok` |
 | `fail_station` / `repair_station` | `station` | failing a stove → `stove_ok` |
-| `set_stock` | `shelf`, `ingredient`, `kg` | a lower stock → `supply_ok` |
+| `set_stock` | `shelf`, `ingredient`, `kg` | none by Bayes; `supply_ok` = 1.0 only if M1 then rejects an order for ingredients |
 | `demand_surge` | `order`, `extra` | none |
 | `add_order` | `order: {id, destination, meals, diet, deadline, priority, release}` | none |
 | `agent_off` | `agent` | none |

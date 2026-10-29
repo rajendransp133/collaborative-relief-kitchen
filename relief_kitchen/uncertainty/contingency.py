@@ -16,10 +16,9 @@ CONTINGENCIES: dict[str, list[str]] = {
         "Dispatch vehicle earlier to absorb extra travel time",
         "Use faster vehicle (V3) if batch capacity allows",
     ],
-    "supply_ok": [
-        "Check secondary shelf stock (S3)",
-        "Substitute recipe (e.g. rice_dal → millet_khichdi)",
+    "supply_ok": [  # only raised once M1 has already tried every shelf and every diet-safe recipe
         "Flag shortage to coordinator for emergency resupply",
+        "Serve the order partly now and the rest after resupply",
     ],
 }
 

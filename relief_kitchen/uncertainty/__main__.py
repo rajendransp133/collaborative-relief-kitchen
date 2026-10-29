@@ -2,17 +2,18 @@
 
     python -m relief_kitchen.uncertainty
     python -m relief_kitchen.uncertainty --scenario configs/scenarios/stove_failure.yaml
+
+Solves the scenario with M1 (initial plan, then once per event) and prints the belief, the Bayes
+updates, the stock check and the risk at every step.
 """
 
 from __future__ import annotations
 
 import argparse
 
-from relief_kitchen.support.env.scenario import apply_event, load_scenario
+from relief_kitchen.algorithms.planner import run_timeline
 from .belief import Belief
-from .contingency import suggest_contingency
-from .risk import estimate_risk, monte_carlo_risk
-from .timeline import EVENT_TO_VAR, STAGE_NAMES
+from .timeline import belief_timeline
 
 
 def main(argv=None) -> None:
@@ -20,48 +21,33 @@ def main(argv=None) -> None:
     ap.add_argument("--scenario", default="configs/scenarios/stove_failure.yaml")
     args = ap.parse_args(argv)
 
-    sc = load_scenario(args.scenario)
-    belief = Belief.default()
+    results = run_timeline(args.scenario)
+    steps = belief_timeline(results)
 
     print(f"\n=== Module M3: Uncertainty & Risk ===")
-    print(f"Scenario: {sc.name}\n")
+    print(f"Scenario: {results[0].scenario.name}")
 
-    print("--- Initial belief state (before any disruption) ---")
-    print(belief)
-    r_mc = monte_carlo_risk(STAGE_NAMES, belief)
-    r_an = estimate_risk(STAGE_NAMES, belief)
-    print(f"\n  Monte-Carlo risk : {r_mc:.3f}")
-    print(f"  Analytical risk  : {r_an:.3f}")
-
-    # Apply the first scenario event as the observed disruption
-    if sc.events:
-        ev = sc.events[0]
-        _, label = apply_event(sc, ev)
-        print(f"\n>>> Disruption observed: {label}")
-        var = EVENT_TO_VAR.get(ev.kind)
-        if var:
-            belief.observe_disruption(var)
-        else:
-            print("  (unknown event type — simulating stove failure)")
-            belief.observe_disruption("stove_ok")
-    else:
-        print("\n>>> No events in scenario — simulating a stove failure signal")
-        belief.observe_disruption("stove_ok")
-
-    print("\n--- Updated belief state (after disruption) ---")
-    print(belief)
-    r_mc2 = monte_carlo_risk(STAGE_NAMES, belief)
-    r_an2 = estimate_risk(STAGE_NAMES, belief)
-    print(f"\n  Monte-Carlo risk : {r_mc2:.3f}  (was {r_mc:.3f})")
-    print(f"  Analytical risk  : {r_an2:.3f}  (was {r_an:.3f})")
-
-    suggestions = suggest_contingency(belief)
-    if suggestions:
-        print("\n--- Contingency recommendations ---")
-        for line in suggestions:
-            print(f"  {line}")
-    else:
-        print("\n(Risk below threshold — no contingency action needed)")
+    for i, (res, step) in enumerate(zip(results, steps)):
+        print(f"\n--- Step {i}: {res.label} ---")
+        for var, prior, post in step.updates:
+            print(f"  Bayes update  {var}: {prior:.3f} -> {post:.3f}")
+        for shelf, ing, before, after in step.stock.changes:
+            print(f"  Stock count   {shelf} {ing}: {before:g} -> {after:g} kg (a fact, not a guess)")
+        if step.stock.short_orders:
+            print(f"  Stock check   short for {', '.join(step.stock.short_orders)} -> supply_ok = 1.0")
+        elif step.stock.changes:
+            print("  Stock check   M1 still cooks every order from what is left -> supply_ok stays at the prior")
+        if i and not step.updates and not step.stock.changes:
+            print("  No stove, road or stock change at this step; the belief is unchanged.")
+        print(Belief(step.probs))
+        was = f"  (was {steps[i - 1].mc:.3f})" if i else ""
+        print(f"\n  Monte-Carlo risk : {step.mc:.3f}{was}")
+        was = f"  (was {steps[i - 1].analytical:.3f})" if i else ""
+        print(f"  Analytical risk  : {step.analytical:.3f}{was}")
+        if step.contingencies:
+            print("\n  Contingency recommendations:")
+            for line in step.contingencies:
+                print(f"    {line}")
 
 
 if __name__ == "__main__":

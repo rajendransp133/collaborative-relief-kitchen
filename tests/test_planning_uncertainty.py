@@ -1,7 +1,8 @@
 from relief_kitchen.planning.kitchen_plan import plan_for
 from relief_kitchen.planning.scheduler import STEP_DURATION
 from relief_kitchen.support.env.scenario import apply_event, load_scenario
-from relief_kitchen.uncertainty.timeline import belief_timeline, observed_disruptions
+from relief_kitchen.algorithms.planner import run_timeline
+from relief_kitchen.uncertainty.timeline import belief_timeline, observed_disruptions, stock_changes
 
 
 def duration(step_id):
@@ -30,7 +31,7 @@ def scenario_steps(path):
 
 
 def test_belief_rises_only_for_the_disrupted_resource():
-    steps = belief_timeline(scenario_steps("configs/scenarios/stove_failure.yaml"))
+    steps = belief_timeline(run_timeline("configs/scenarios/stove_failure.yaml"))
     assert steps[0].probs["stove_ok"] == 0.05 and not steps[0].updates
     assert steps[1].probs["stove_ok"] > 0.4 > steps[0].probs["stove_ok"]
     assert steps[2].probs["stove_ok"] > steps[1].probs["stove_ok"]
@@ -42,9 +43,23 @@ def test_road_and_stock_events_map_to_their_variables():
     road = scenario_steps("configs/scenarios/road_closure.yaml")
     rice = scenario_steps("configs/scenarios/rice_shortage.yaml")
     assert observed_disruptions(road[0], road[1]) == ["road_ok"]
-    assert observed_disruptions(rice[0], rice[1]) == ["supply_ok"]
+    assert observed_disruptions(rice[0], rice[1]) == []  # a stock count is not a noisy report
+    assert stock_changes(rice[0], rice[1]) == [("S1", "rice", 40, 6)]
+
+
+def test_a_stock_cut_that_m1_covers_leaves_supply_at_the_prior():
+    steps = belief_timeline(run_timeline("configs/scenarios/rice_shortage.yaml"))
+    assert [s.probs["supply_ok"] for s in steps] == [0.05, 0.05, 0.05]
+    assert all(s.stock.changes and not s.stock.short_orders for s in steps[1:])
+    assert not any(s.contingencies for s in steps)
+
+
+def test_an_ingredient_rejection_makes_supply_certain():
+    steps = belief_timeline(run_timeline("configs/scenarios/infeasible.yaml"))
+    assert steps[0].stock.short_orders == ["O4"] and steps[0].probs["supply_ok"] == 1.0
+    assert any("supply_ok" in line for line in steps[0].contingencies)
 
 
 def test_monte_carlo_is_reproducible():
-    scs = scenario_steps("configs/scenarios/road_closure.yaml")
-    assert [s.mc for s in belief_timeline(scs)] == [s.mc for s in belief_timeline(scs)]
+    results = run_timeline("configs/scenarios/road_closure.yaml")
+    assert [s.mc for s in belief_timeline(results)] == [s.mc for s in belief_timeline(results)]

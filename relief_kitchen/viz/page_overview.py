@@ -20,7 +20,7 @@ KITCHEN = pygame.Rect(M, CONTENT_TOP, HALF, MAP_H)
 NETWORK = pygame.Rect(M + HALF + GAP, CONTENT_TOP, LEFT_W - HALF - GAP, MAP_H)
 SCHEDULE = pygame.Rect(M, CONTENT_TOP + MAP_H + GAP, LEFT_W, CONTENT_BOTTOM - CONTENT_TOP - MAP_H - GAP)
 ORDERS = pygame.Rect(RIGHT_X, CONTENT_TOP, RIGHT_W, CONTENT_BOTTOM - CONTENT_TOP)
-ORDER_ROW = 30
+ORDER_ROW = 48
 
 
 def draw_overview_page(st: ViewState, s, r):
@@ -133,6 +133,8 @@ def draw_schedule(st: ViewState, s, r, box):
 def draw_orders(st: ViewState, s, r, box):
     sc = r.scenario
     deliveries = {d.order: d for d in r.allocation.deliveries} if r.allocation else {}
+    prev = st.steps[st.step - 1] if 0 < st.step < len(st.steps) else None
+    was = {d.order: d.recipe for d in prev.allocation.deliveries} if prev and prev.allocation else {}
     y = panel(s, box, "Orders")
     x0, x1 = box.x + PAD, box.right - PAD
     for label, x, anchor in (("Order", x0, "topleft"), ("To", x0 + 64, "topleft"), ("Meals", x0 + 250, "topright"),
@@ -144,16 +146,24 @@ def draw_orders(st: ViewState, s, r, box):
         row = pygame.Rect(x0 - 6, y, x1 - x0 + 12, ORDER_ROW)
         if st.selected == o.id:
             draw_rect(s, PAPER, row, border_radius=4)
-        disc(s, st.order_color.get(o.id, ACCENT), (x0 + 4, row.centery), 4)
-        text(s, o.id, (x0 + 16, row.centery), 13, INK, anchor="midleft", weight="semibold")
-        text(s, fit(sc.roads.places[o.destination].label, 13, 150), (x0 + 64, row.centery), 13, INK, anchor="midleft")
-        text(s, str(o.meals), (x0 + 250, row.centery), 13, SUBTLE, anchor="midright", mono=True)
+        cy = row.y + 16
+        disc(s, st.order_color.get(o.id, ACCENT), (x0 + 4, cy), 4)
+        text(s, o.id, (x0 + 16, cy), 13, INK, anchor="midleft", weight="semibold")
+        text(s, fit(sc.roads.places[o.destination].label, 13, 150), (x0 + 64, cy), 13, INK, anchor="midleft")
+        text(s, str(o.meals), (x0 + 250, cy), 13, SUBTLE, anchor="midright", mono=True)
         if o.id in deliveries:
             d = deliveries[o.id]
-            text(s, clock(sc, d.arrive), (x1, row.centery), 13, ERROR if d.arrive > o.deadline else INK,
+            text(s, clock(sc, d.arrive), (x1, cy), 13, ERROR if d.arrive > o.deadline else INK,
                  anchor="midright", mono=True, weight="semibold")
+            # the menu, and what it was at the previous plan step if the solver swapped it
+            changed = o.id in was and was[o.id] != d.recipe
+            m = text(s, sc.recipes[d.recipe].name, (x0 + 64, cy + 18), 13, ACCENT if changed else SUBTLE,
+                     anchor="midleft", weight="semibold" if changed else None)
+            if changed:
+                text(s, fit(f"was {sc.recipes[was[o.id]].name}", 12, x1 - m.right - 12), (x1, cy + 18), 12, MUTED,
+                     anchor="midright")
         else:
-            text(s, "rejected", (x1, row.centery), 13, ERROR, anchor="midright", weight="semibold")
+            text(s, "rejected", (x1, cy), 13, ERROR, anchor="midright", weight="semibold")
         draw_line(s, DIVIDER, (x0, row.bottom), (x1, row.bottom))
         st.clicks.append((row, "order", o.id))
         y = row.bottom
