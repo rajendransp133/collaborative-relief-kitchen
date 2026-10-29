@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from ..env.entities import Order, Recipe, Stage, recipe_minutes, recipe_station
+from .env.entities import Order, Recipe, Stage, recipe_minutes, recipe_station
 
 
 @dataclass

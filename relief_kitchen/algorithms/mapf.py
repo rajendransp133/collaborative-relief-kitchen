@@ -1,6 +1,6 @@
 """Multi-agent path finding (MAPF) on the kitchen grid with prioritised planning.
 
-Agents are planned one at a time with space-time A* (`astar.space_time_astar`). Each agent's timed
+Agents are planned one at a time with space-time A* (`grid_search.space_time_astar`). Each agent's timed
 path is written into a reservation table, and later agents treat reserved (cell, t) pairs and
 reserved moves as obstacles. Two kinds of collision are ruled out:
 
@@ -15,11 +15,11 @@ path. Agents that stay put are planned first, which avoids most such cases in a 
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass
 
-from ..env.entities import Cell
-from ..env.kitchen_grid import KitchenGrid
-from .astar import space_time_astar
+from ..support.env.entities import Cell
+from ..support.env.kitchen_grid import KitchenGrid
+from ..support.records import MAPFResult
+from .grid_search import space_time_astar
 
 
 def at(path: list[Cell], t: int) -> Cell:
@@ -47,13 +47,6 @@ def find_conflicts(paths: dict[str, list[Cell]]) -> list[tuple]:
 
 def verify_collision_free(paths: dict[str, list[Cell]]) -> bool:
     return not find_conflicts(paths)
-
-
-@dataclass
-class MAPFResult:
-    paths: dict[str, list[Cell]]
-    ok: bool = True
-    note: str = ""
 
 
 def prioritized_planning(grid: KitchenGrid, starts: dict[str, Cell], goals: dict[str, Cell],

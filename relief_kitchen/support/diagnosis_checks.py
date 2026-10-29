@@ -1,52 +1,26 @@
-"""Infeasibility diagnosis: *why* can't an order be scheduled?
+"""Helpers for `algorithms/diagnosis.py`: the per-category direct checks and the wording.
 
-Two simple steps.
-
-1. Direct checks, one per category, with no search. Each tests a necessary condition:
+Direct checks, one per category, with no search. Each tests a necessary condition:
      dietary      some recipe satisfies the diet
      ingredients  some diet-safe recipe fits the stock left after the accepted orders
      equipment    that recipe's stages each have a working station big enough
      staff        every needed skill has an agent on shift after the order arrives
      transport    an open road reaches the destination and a vehicle is big enough
      time         release + critical path of the task DAG + fastest drive <= deadline
-   A failed check is a definite cause ("isolated": the order is impossible on its own).
-
-2. Relax one category at a time. If every check passes but the CSP still fails, the order is
-   competing with the already-accepted orders (or the combination is too tight). For each category,
-   drop that category's constraints for this order only and re-solve. Any category whose removal
-   makes the order fit is reported as a cause.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from ..env.entities import Order
-from ..env.entities import recipe_station
-from ..env.kitchen_grid import stations_of
-from ..env.road_network import closed_roads
-from ..env.scenario import Scenario, clock, total_stock
-from .allocation import build_model, compatible_variants, effective_batch_size, solve_model, transfer_budgets
-from .routing import astar_route
+from ..algorithms.routing import astar_route
+from .env.entities import Order, recipe_station
+from .env.kitchen_grid import stations_of
+from .env.road_network import closed_roads
+from .env.scenario import Scenario, clock, total_stock
+from .model_helpers import compatible_variants, effective_batch_size, transfer_budgets
+from .records import Cause, Diagnosis
 from .task_graph import build_task_graph, critical_path_minutes
 
 CATEGORY_ORDER = ["ingredients", "equipment", "staff", "time", "transport", "dietary", "safety", "collision", "priority"]
-
-
-@dataclass
-class Cause:
-    category: str
-    detail: str
-
-
-@dataclass(frozen=True)
-class Diagnosis:
-    order: str
-    destination: str
-    meals: int
-    mode: str  # "isolated": impossible on its own | "contention": clashes with accepted orders
-    causes: list[Cause]
-    categories: list[str]  # distinct cause categories, in CATEGORY_ORDER
 
 
 def make_diagnosis(order: Order, destination: str, mode: str, causes: list[Cause]) -> Diagnosis:
@@ -58,33 +32,6 @@ def summary(d: Diagnosis) -> str:
     return f"{d.order} ({d.destination}, {d.meals} meals): {' + '.join(d.categories) or 'unknown'}"
 
 
-def diagnose_order(sc: Scenario, order: Order, accepted: list[Order], hints: dict | None = None,
-                   node_limit: int = 1_500) -> Diagnosis:
-    dest = sc.roads.places[order.destination].label
-    causes = direct_checks(sc, order, accepted, hints or {})
-    if causes:
-        return make_diagnosis(order, dest, "isolated", causes)
-
-    # Step 2. Contention if the order fits on its own; otherwise relax within the order alone.
-    alone = build_model(sc, [order])
-    contention = bool(accepted) and solve_model(alone, node_limit=node_limit).ok
-    model = build_model(sc, accepted + [order]) if contention else alone
-    for cat in CATEGORY_ORDER:
-        def keep(c, _cat=cat):
-            return not (c.category == _cat and order.id in c.meta.get("orders", ()))
-
-        if any(not keep(c) for c in model.csp.constraints) and \
-                solve_model(model, hints=hints if contention else None, node_limit=node_limit, keep=keep).ok:
-            causes.append(Cause(cat, _relaxed_sentence(sc, order, cat, contention)))
-    if not causes:  # no single category is to blame: everything is simply too tight
-        causes.append(Cause("time", f"no schedule meets the {clock(sc, order.deadline)} deadline with the "
-                                    "resources left"))
-    return make_diagnosis(order, dest, "contention" if contention else "isolated", causes)
-
-
-# ---------------------------------------------------------------------------------------------
-# step 1: direct checks
-# ---------------------------------------------------------------------------------------------
 def direct_checks(sc: Scenario, order: Order, accepted: list[Order], hints: dict) -> list[Cause]:
     causes: list[Cause] = []
     diet = ", ".join(sorted(order.diet)) or "no restriction"
@@ -160,10 +107,8 @@ def direct_checks(sc: Scenario, order: Order, accepted: list[Order], hints: dict
     return causes
 
 
-# ---------------------------------------------------------------------------------------------
-# step 2: wording for a category whose relaxation lets the order through
-# ---------------------------------------------------------------------------------------------
-def _relaxed_sentence(sc: Scenario, order: Order, category: str, contention: bool) -> str:
+def relaxed_sentence(sc: Scenario, order: Order, category: str, contention: bool) -> str:
+    """Wording for a category whose relaxation lets the order through."""
     who = " by higher-priority orders" if contention else ""
     return {
         "staff": f"staff with the needed skills are fully booked{who}",

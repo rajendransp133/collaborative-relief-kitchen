@@ -1,4 +1,4 @@
-"""Task and resource allocation for the relief kitchen, formulated as a CSP.
+"""The relief kitchen's task and resource allocation, formulated as a CSP.
 
 Time is cut into slots of `slot_minutes` (10 min). Variables per order O:
 
@@ -6,38 +6,25 @@ Time is cut into slots of `slot_minutes` (10 min). Variables per order O:
     O.b<k>.<stage>     who does batch k's stage, where, and when    domain: (agent, station, start slot)
     O.dispatch         which vehicle leaves when                    domain: (vehicle, departure slot)
 
-Packing agent, station and start into one tuple-valued variable keeps every resource
-rule a *binary* constraint ("two tasks on the same station must not overlap"). That fits forward
-checking and AC-3 directly.
-
-Each constraint is tagged with a category, and with the orders it concerns in `meta["orders"]`.
-The diagnosis module uses these tags to blame ingredients / equipment / staff / time / transport.
-
-Style: records (`KitchenModel`, `Allocation`, ...) plus functions. Each constraint is a
-`Constraint` record built by a small factory (`precedence`, `disjoint`, `stock_limit`) that closes
-over the data it needs.
+Packing agent, station and start into one tuple-valued variable keeps every resource rule a
+*binary* constraint ("two tasks on the same station must not overlap"), which fits forward checking
+and AC-3 directly. Each constraint is tagged with a category, and with the orders it concerns in
+`meta["orders"]`, so the diagnosis can blame ingredients / equipment / staff / time / transport.
 """
 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
 
-from ..env.entities import Order, Recipe, agent_available, recipe_satisfies, recipe_station
-from ..env.kitchen_grid import HANDLING_MINUTES, WALK_SECONDS, shared_access_pairs, stations_of
-from ..env.scenario import Scenario, clock, total_stock
-from .csp import CSP, Constraint, SolveResult, constraint, solve, subset
-from .astar import bfs_distances
-from .locate import rank_stations
-from .routing import Route, depot_routes
-from .task_graph import TaskGraph, build_task_graph, graph_tasks, topological_order
-
-UNLOAD_MINUTES = 10
-
-
-def start_of(val) -> int:
-    """Start slot of a task value (agent, station, start) or dispatch value (vehicle, departure)."""
-    return val[-1]
+from ..support.csp_build import constraint
+from ..support.env.entities import Order, Recipe, agent_available, recipe_satisfies, recipe_station
+from ..support.env.kitchen_grid import shared_access_pairs
+from ..support.env.scenario import Scenario, clock, total_stock
+from ..support.model_helpers import (UNLOAD_MINUTES, compatible_variants, cook_stage, effective_batch_size,
+                                     start_of, transfer_budgets, travel_minutes)
+from ..support.records import CSP, Constraint, KitchenModel
+from ..support.task_graph import TaskGraph, build_task_graph, graph_tasks, topological_order
+from .routing import depot_routes
 
 
 # ---------------------------------------------------------------------------------------------
@@ -48,8 +35,7 @@ def precedence(pred: str, succ: str, dur: int, order: str) -> Constraint:
 
     def revise(xi, xj, domains):
         # Bounds version of AC-3's revise: succ needs start >= (earliest pred start + dur), and pred
-        # needs start <= (latest succ start - dur). Domains are built sorted by start time and
-        # filtering keeps that order, so min/max are the first/last elements.
+        # needs start <= (latest succ start - dur). Domains are sorted by start time.
         dom = domains[xi]
         if not dom:
             return dom
@@ -75,8 +61,8 @@ def disjoint(t1: str, t2: str, d1: int, d2: int, clash, category: str, kind: str
         return s1 + d1 <= s2 or s2 + d2 <= s1
 
     def revise(xi, xj, domains):
-        # While xj still has several values, every xi value keeps some support, so the
-        # quadratic AC-3 scan can only prune once xj is down to one value.
+        # While xj still has several values, every xi value keeps some support, so pruning is only
+        # possible once xj is down to one value.
         if len(domains[xj]) != 1:
             return domains[xi]
         other = domains[xj][0]
@@ -88,8 +74,7 @@ def disjoint(t1: str, t2: str, d1: int, d2: int, clash, category: str, kind: str
 def stock_limit(variant_vars: dict[str, Order], recipes: dict[str, Recipe], stock: dict[str, float]) -> Constraint:
     """Global constraint: ingredients used by all chosen menus must fit in storage.
 
-    Usage only grows as more menus are chosen, so the check is also valid on partial assignments
-    (which is why it does not use `constraint`, which waits for the whole scope)."""
+    Usage only grows as more menus are chosen, so the check is also valid on partial assignments."""
 
     def check(a):
         use: dict[str, float] = {}
@@ -104,154 +89,7 @@ def stock_limit(variant_vars: dict[str, Order], recipes: dict[str, Recipe], stoc
 
 
 # ---------------------------------------------------------------------------------------------
-# records: the model and the decoded solution
-# ---------------------------------------------------------------------------------------------
-@dataclass
-class ScheduledTask:
-    id: str
-    order: str
-    batch: int
-    stage: str
-    meals: int
-    agent: str
-    station: str
-    start: int  # minutes after the scenario start
-    end: int
-    carry_in: int = 0  # first minutes: fetching the batch from the previous station
-    work: int = 0  # then the actual cooking / prep / packing
-    carry_out: int = 0  # last stage only: final minutes carrying meals to the dispatch door
-    recipe: str = ""
-
-
-@dataclass
-class Delivery:
-    order: str
-    destination: str
-    vehicle: str
-    depart: int
-    arrive: int
-    back: int  # vehicle is free again at the depot
-    route: Route | None
-    meals: int
-    recipe: str
-
-
-@dataclass
-class Allocation:
-    variants: dict[str, str]
-    tasks: list[ScheduledTask]
-    deliveries: list[Delivery]
-    result: SolveResult
-
-
-@dataclass(frozen=True)
-class KitchenModel:
-    scenario: Scenario
-    orders: list[Order]
-    csp: CSP
-    graphs: dict[str, TaskGraph]
-    dur: dict[str, int]  # task id -> duration in slots
-    routes: dict[str, Route | None]  # depot -> place over open roads (None = unreachable)
-    relaxed_routes: dict[str, Route | None]  # same, ignoring closures (to time a hypothetical trip)
-
-
-# ---------------------------------------------------------------------------------------------
-# functions over the model
-# ---------------------------------------------------------------------------------------------
-def travel_minutes(sc: Scenario, routes, relaxed_routes, order: Order, vehicle_id: str) -> float:
-    """One-way drive time for `order` in a vehicle (relaxed route when the real one is cut)."""
-    r = routes.get(order.destination) or relaxed_routes.get(order.destination)
-    return (r.minutes if r else 10_000) / sc.vehicles[vehicle_id].speed
-
-
-def model_travel(m: KitchenModel, order: Order, vehicle_id: str) -> float:
-    return travel_minutes(m.scenario, m.routes, m.relaxed_routes, order, vehicle_id)
-
-
-def solve_model(m: KitchenModel, hints: dict | None = None, node_limit: int = 3_000, keep=None) -> SolveResult:
-    """Solve the model's CSP; `keep(constraint)` optionally drops constraints (used by diagnosis)."""
-    csp = m.csp if keep is None else subset(m.csp, keep)
-    return solve(csp, node_limit=node_limit, value_order=_value_order(m), var_key=_var_key, hints=hints)
-
-
-def decode(m: KitchenModel, result: SolveResult) -> Allocation:
-    """Turn a CSP solution (slots and tuples) into tasks and deliveries in minutes."""
-    S, a = m.scenario.slot_minutes, result.solution
-    variants = {o.id: a[f"{o.id}.variant"] for o in m.orders}
-    tasks = sorted((ScheduledTask(node.id, o.id, node.batch, node.stage, node.meals, *a[node.id][:2],
-                                  a[node.id][2] * S, (a[node.id][2] + m.dur[node.id]) * S,
-                                  node.transfer_minutes, node.work_minutes, node.carry_out_minutes, variants[o.id])
-                    for o in m.orders for node in graph_tasks(m.graphs[o.id])),
-                   key=lambda t: (t.start, t.order, t.batch))
-    deliveries = []
-    for o in m.orders:
-        v, d = a[f"{o.id}.dispatch"]
-        travel = model_travel(m, o, v)
-        deliveries.append(Delivery(o.id, o.destination, v, d * S, d * S + travel, d * S + 2 * travel + UNLOAD_MINUTES,
-                                   m.routes.get(o.destination), o.meals, variants[o.id]))
-    return Allocation(variants, tasks, deliveries, result)
-
-
-def compatible_variants(sc: Scenario, order: Order) -> list[Recipe]:
-    return [r for r in sc.recipes.values() if recipe_satisfies(r, order.diet)]
-
-
-def cook_stage(sc: Scenario) -> str:
-    for s in sc.stages:
-        if s.station_type in ("stove", "steamer") or s.skill == "cook":
-            return s.name
-    return sc.stages[-1].name
-
-
-def stage_station_types(sc: Scenario, stage) -> set[str]:
-    """Every station type a stage can use, over all recipes (e.g. cook: stove or steamer)."""
-    return {stage.station_type} | {recipe_station(r, stage) for r in sc.recipes.values()}
-
-
-def transfer_budgets(sc: Scenario) -> dict[str, int]:
-    """Carry-in time per stage, in minutes: the worst case of
-    walk(agent home -> previous station) + walk(previous station -> this station) + handling.
-
-    The first stage walks from home to the shelf; "dispatch" is the walk from packing to the door.
-    Walk times come from BFS distances on the floor grid (WALK_SECONDS per step)."""
-    grid = sc.kitchen
-    homes = [a.home for a in sc.agents.values()]
-    cells = lambda types: [st.access for st in grid.stations.values() if st.type in types]  # noqa: E731
-    dist_from = {}
-
-    def walk(a, b) -> float:
-        if a not in dist_from:
-            dist_from[a] = bfs_distances(grid, a)
-        return dist_from[a].get(b, 0) * WALK_SECONDS / 60
-
-    budgets: dict[str, int] = {}
-    for stage in sc.stages:
-        here = cells(stage_station_types(sc, stage))
-        prev_types = set().union(*(stage_station_types(sc, p) for p in sc.stages if p.name in stage.after))
-        if not prev_types:
-            worst = max(walk(h, c) for h in homes for c in here)
-        else:
-            worst = max(walk(h, p) + walk(p, c) for h in homes for p in cells(prev_types) for c in here)
-        budgets[stage.name] = math.ceil(worst + HANDLING_MINUTES)
-    last = sc.stages[-1]
-    door = cells({"dispatch"})
-    if door:
-        budgets["dispatch"] = math.ceil(max(walk(k, d) for k in cells(stage_station_types(sc, last)) for d in door)
-                                        + HANDLING_MINUTES)
-    return budgets
-
-
-def effective_batch_size(sc: Scenario, variants: list[Recipe]) -> int:
-    """Cap the batch size at the biggest *working* cooking station: if the large stoves fail, the
-    order is split into smaller batches that the remaining stoves can take."""
-    stage = next(s for s in sc.stages if s.name == cook_stage(sc))
-    types = {recipe_station(r, stage) for r in variants} or {stage.station_type}
-    caps = [st.max_batch for t in types for st in stations_of(sc.kitchen, t, working_only=True)]
-    return min(sc.batch_size, max(caps)) if caps else sc.batch_size
-
-
-# ---------------------------------------------------------------------------------------------
-# building the model
+# variables and domains
 # ---------------------------------------------------------------------------------------------
 def build_model(sc: Scenario, orders: list[Order]) -> KitchenModel:
     S = sc.slot_minutes
@@ -293,6 +131,9 @@ def build_model(sc: Scenario, orders: list[Order]) -> KitchenModel:
     return KitchenModel(sc, orders, CSP(domains, constraints, priority), graphs, dur, routes, relaxed)
 
 
+# ---------------------------------------------------------------------------------------------
+# constraints
+# ---------------------------------------------------------------------------------------------
 def order_constraints(sc: Scenario, orders, graphs, dur, routes, travel) -> list[Constraint]:
     """Constraints that involve a single order: unary rules plus links between its own variables."""
     S = sc.slot_minutes
@@ -391,42 +232,3 @@ def pair_constraints(sc: Scenario, orders, graphs, dur, travel) -> list[Constrai
                                       f"{hi.id} leaves before {lo.id} on a shared vehicle",
                                       orders={hi.id, lo.id}, kind="priority"))
     return out
-
-
-# ---------------------------------------------------------------------------------------------
-# search heuristics
-# ---------------------------------------------------------------------------------------------
-def _var_key(var: str) -> tuple:
-    """Phase before MRV: choose menus, then kitchen tasks, then vehicles (a list-scheduling order)."""
-    if var.endswith(".variant"):
-        return (0,)
-    if var.endswith(".dispatch"):
-        return (2,)
-    return (1,)
-
-
-def _value_order(m: KitchenModel):
-    """Value ordering in place of LCV (LCV over hundreds of (agent, station, slot) values is slow).
-
-    Tasks: earliest start, then the station nearest the work area (BFS ranking from `locate`), then
-    the least-busy agent. Vehicles: earliest departure, then the smallest vehicle that fits."""
-    sc = m.scenario
-    homes = [a.home for a in sc.agents.values()]
-    centre = homes[len(homes) // 2]
-    pref = {st.id: i for stype in {s.type for s in sc.kitchen.stations.values()}
-            for i, (st, _d) in enumerate(rank_stations(sc.kitchen, centre, stype))}
-
-    def order(var, values, assign):
-        if var.endswith(".variant"):
-            return values
-        if var.endswith(".dispatch"):
-            meals = next(o.meals for o in m.orders if var == f"{o.id}.dispatch")
-            spare = lambda v: sc.vehicles[v[0]].capacity - meals  # noqa: E731
-            return sorted(values, key=lambda v: (v[1], spare(v) if spare(v) >= 0 else 10_000, v[0]))
-        busy: dict[str, int] = {}
-        for k, v in assign.items():
-            if not k.endswith((".variant", ".dispatch")):
-                busy[v[0]] = busy.get(v[0], 0) + m.dur[k]
-        return sorted(values, key=lambda v: (v[2], pref.get(v[1], 99), busy.get(v[0], 0), v[0]))
-
-    return order

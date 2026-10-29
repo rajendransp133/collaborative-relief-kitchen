@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import pygame
 
-from ..env.kitchen_grid import stations_of
-from ..env.scenario import clock
-from ..search_csp.kitchen_flow import (STAGE_VERB, agent_activity, batch_journey, batch_status, leg_at,
+from ..support.env.kitchen_grid import stations_of
+from ..support.env.scenario import clock
+from ..support.kitchen_flow import (STAGE_VERB, agent_activity, batch_journey, batch_status, leg_at,
                                        previous_task, station_activity, stock_at, tasks_by_batch)
-from ..search_csp.motion import agent_position, agent_trail
+from ..support.motion import agent_position, agent_trail
 from .state import ViewState
 from .theme import (ACCENT, ALLERGEN_FREE, ERROR, FAILED_STYLE, FAINT, GRID, HAIRLINE, INK, MUTED, STATION_NAME,
-                    STATION_STYLE, SURFACE, WALL, ZONE_NAME, disc, fit, hline, mix, section, text)
+                    STATION_STYLE, SURFACE, WALL, ZONE_NAME, disc, draw_line, draw_rect, fit, hline, mix, section,
+                    text)
 from .widgets import CONTENT_BOTTOM, CONTENT_TOP, M, W, meter
 
 TOKEN_LETTER = {"storage": "I", "prep": "P", "stove": "C", "steamer": "C", "packaging": "K", "dispatch": "K"}
@@ -69,14 +70,14 @@ def draw_kitchen_map(st: ViewState, s, r, rect: pygame.Rect, detailed: bool = Tr
         for cc in range(grid.width):
             cr = pygame.Rect(ox + cc * cell, oy + rr * cell, cell, cell)
             if grid.rows[rr][cc] == "#":
-                pygame.draw.rect(s, WALL, cr)
+                draw_rect(s, WALL, cr)
                 continue
             zone = tints.get((rr, cc))
-            pygame.draw.rect(s, mix(SURFACE, STATION_STYLE[zone][0], 0.45) if zone else SURFACE, cr)
-            pygame.draw.rect(s, GRID, cr, 1)
+            draw_rect(s, mix(SURFACE, STATION_STYLE[zone][0], 0.45) if zone else SURFACE, cr)
+            draw_rect(s, GRID, cr, 1)
             if (rr, cc) in grid.blocked:
-                pygame.draw.line(s, ERROR, cr.topleft, cr.bottomright, 2)
-    pygame.draw.rect(s, HAIRLINE, (ox, oy, cell * grid.width, cell * grid.height), 1)
+                draw_line(s, ERROR, cr.topleft, cr.bottomright, 2)
+    draw_rect(s, HAIRLINE, (ox, oy, cell * grid.width, cell * grid.height), 1)
 
     # stations
     stock_now = stock_at(sc, r.withdrawals, now)
@@ -84,15 +85,15 @@ def draw_kitchen_map(st: ViewState, s, r, rect: pygame.Rect, detailed: bool = Tr
         cr = pygame.Rect(ox + stn.cell[1] * cell + 3, oy + stn.cell[0] * cell + 3, cell - 6, cell - 6)
         fill, edge = FAILED_STYLE if stn.failed else STATION_STYLE[stn.type]
         task, _ = station_activity(al, stn.id, now) if al else (None, [])
-        pygame.draw.rect(s, fill, cr, border_radius=5)
-        pygame.draw.rect(s, edge, cr, 2, border_radius=5)
+        draw_rect(s, fill, cr, border_radius=5)
+        draw_rect(s, edge, cr, 2, border_radius=5)
         id_size = 12 if detailed else 10
         text(s, stn.id, (cr.centerx, cr.y + (7 if detailed else cr.height / 2 - 6)), id_size,
              MUTED if stn.failed else INK, True, anchor="midtop")
         if stn.failed:
             pad = 7
-            pygame.draw.line(s, ERROR, (cr.x + pad, cr.y + pad), (cr.right - pad, cr.bottom - pad), 2)
-            pygame.draw.line(s, ERROR, (cr.right - pad, cr.y + pad), (cr.x + pad, cr.bottom - pad), 2)
+            draw_line(s, ERROR, (cr.x + pad, cr.y + pad), (cr.right - pad, cr.bottom - pad), 2)
+            draw_line(s, ERROR, (cr.right - pad, cr.y + pad), (cr.x + pad, cr.bottom - pad), 2)
         elif stn.type == "storage":
             start = sum(stn.stock.values()) or 1
             left = sum(stock_now.get(stn.id, {}).values())
@@ -121,7 +122,7 @@ def draw_kitchen_map(st: ViewState, s, r, rect: pygame.Rect, detailed: bool = Tr
             box = pygame.Rect(0, 0, rad * 2, rad * 2)
             box.center = (px, py)
             if ag.kind == "robot":
-                pygame.draw.rect(s, col, box, border_radius=5)
+                draw_rect(s, col, box, border_radius=5)
             else:
                 disc(s, col, (px, py), rad)
             text(s, ag.id[:2], (px, py), 10 if detailed else 9, SURFACE, True, anchor="center")
@@ -153,8 +154,8 @@ def draw_kitchen_map(st: ViewState, s, r, rect: pygame.Rect, detailed: bool = Tr
             tok = pygame.Rect(0, 0, size, size)
             tok.center = (x, y)
             colour = st.order_color.get(key[0], ACCENT)
-            pygame.draw.rect(s, colour, tok, border_radius=3)
-            pygame.draw.rect(s, SURFACE, tok, 1, border_radius=3)
+            draw_rect(s, colour, tok, border_radius=3)
+            draw_rect(s, SURFACE, tok, 1, border_radius=3)
             if detailed:
                 text(s, letter, tok.center, 9, SURFACE, True, anchor="center")
                 if allergen_free(order):
@@ -175,7 +176,7 @@ def draw_kitchen_page(st: ViewState, s, r):
     y = oy + cell * sc.kitchen.height + 10
     draw_legend(s, left.x, y)
     draw_station_strip(st, s, r, pygame.Rect(left.x, y + 26, left.width, left.bottom - y - 26))
-    pygame.draw.line(s, HAIRLINE, (928, CONTENT_TOP), (928, CONTENT_BOTTOM))
+    draw_line(s, HAIRLINE, (928, CONTENT_TOP), (928, CONTENT_BOTTOM))
     right = pygame.Rect(948, CONTENT_TOP, W - M - 948, CONTENT_BOTTOM - CONTENT_TOP)
     y = draw_stock_panel(st, s, r, right)
     draw_batch_panel(st, s, r, pygame.Rect(right.x, y + 14, right.width, right.bottom - y - 14))
@@ -185,14 +186,14 @@ def draw_legend(s, x, y):
     for stype in ("storage", "prep", "stove", "steamer", "packaging", "dispatch"):
         fill, edge = STATION_STYLE[stype]
         sw = pygame.Rect(x, y + 3, 11, 11)
-        pygame.draw.rect(s, fill, sw, border_radius=2)
-        pygame.draw.rect(s, edge, sw, 2, border_radius=2)
+        draw_rect(s, fill, sw, border_radius=2)
+        draw_rect(s, edge, sw, 2, border_radius=2)
         x = text(s, STATION_NAME[stype], (x + 16, y), 11, MUTED).right + 14
     disc(s, INK, (x + 5, y + 8), 5)
     x = text(s, "human", (x + 14, y), 11, MUTED).right + 10
-    pygame.draw.rect(s, INK, (x, y + 3, 10, 10), border_radius=2)
+    draw_rect(s, INK, (x, y + 3, 10, 10), border_radius=2)
     x = text(s, "robot", (x + 14, y), 11, MUTED).right + 14
-    pygame.draw.rect(s, MUTED, (x, y + 2, 12, 12), border_radius=3)
+    draw_rect(s, MUTED, (x, y + 2, 12, 12), border_radius=3)
     text(s, f"food batch: {TOKEN_MEANING}", (x + 17, y), 11, MUTED)
 
 
@@ -207,7 +208,7 @@ def draw_station_strip(st, s, r, rect):
         x = rect.x + (i // rows_per_col) * col_w
         y = rect.y + 18 + (i % rows_per_col) * row_h
         edge = STATION_STYLE[stn.type][1]
-        pygame.draw.rect(s, edge, (x, y + 4, 8, 8), border_radius=2)
+        draw_rect(s, edge, (x, y + 4, 8, 8), border_radius=2)
         text(s, stn.id, (x + 14, y), 11, INK, True)
         if stn.failed:
             msg, colour = "failed - not used", ERROR

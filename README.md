@@ -78,7 +78,7 @@ flowchart TB
 - **Infeasibility diagnosis.** Every constraint is tagged with a category: ingredients, equipment, staff, time or transport. When an order has no solution, a direct check per category runs first (stock, working equipment, staff on shift, open roads, critical-path time); if those pass, one category at a time is relaxed to find which one blocks the order. The report therefore says *why*, e.g. "order 12: transport (only route blocked) + time (deadline 14:00)".
 
 > [!TIP]
-> **M1 is implemented.** See [docs/module1.md](docs/module1.md) for the formulation, algorithms and scenarios. To try it, run `python -m relief_kitchen.viz` (Pygame visualiser) or `python -m relief_kitchen.run --scenario configs/scenarios/infeasible.yaml` (text report).
+> **M1 is implemented.** See [docs/module1.md](docs/module1.md) for the formulation, algorithms and scenarios. The algorithms worth presenting are all in `relief_kitchen/algorithms/`; helpers live in `relief_kitchen/support/` and the visualiser in `relief_kitchen/viz/`. To try it, run `python -m relief_kitchen.viz` (Pygame visualiser) or `python -m relief_kitchen.run --scenario configs/scenarios/infeasible.yaml` (text report).
 >
 > ![Module 1 visualiser: kitchen page](docs/img/kitchen.png)
 
@@ -233,8 +233,9 @@ collaborative-relief-kitchen/
 ├── configs/
 │   └── scenarios/          # YAML scenarios: base, demand surge, road closure, ...
 ├── relief_kitchen/
-│   ├── env/                # simulator: kitchen grid, road network, event generator
-│   ├── search_csp/         # M1: path finding, routing, CSP, infeasibility diagnosis
+│   ├── algorithms/         # M1: path finding, routing, CSP, infeasibility diagnosis (the code to present)
+│   ├── support/            # simulator (env/: kitchen grid, road network, scenarios), records, helpers, report
+│   ├── viz/                # Pygame visualiser
 │   ├── planning/           # M2: partial-order planner, scheduler, plan repair
 │   ├── uncertainty/        # M3: belief models, risk estimates, contingencies
 │   ├── marl/               # M4: environment wrapper, training, policies, baselines

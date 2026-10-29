@@ -1,104 +1,25 @@
 """A small, general CSP solver (CS 188 lecture "Constraint Satisfaction Problems").
 
-A CSP is a record: variable domains (lists, kept in a preferred value order), constraints, and a
-static tie-break key per variable. A constraint is also a record. Its behaviour is a plain
-function `check(assignment) -> bool`, which receives a *partial* assignment and must return True
-whenever it cannot decide yet. That lets one test serve backtracking, forward checking and AC-3.
+A CSP is variable domains plus constraints. A constraint's `check(assignment)` receives a
+*partial* assignment and returns True while it cannot decide yet, so one test serves
+backtracking, forward checking and AC-3.
 
-Every constraint carries a `category` (ingredients, equipment, staff, time, transport, ...). The
-solver ignores it; the diagnosis module uses it to say *why* an order is infeasible.
-Category "structure" marks facts that are never relaxed, for example task precedence.
-
-Solving pipeline:
     1. node consistency      - apply unary constraints once
     2. AC-3                  - arc consistency on binary constraints
     3. backtracking search   - MRV with a degree tie-break, LCV value order, forward checking
 
-The search mutates its working copy of the domains, undoing each change from a trail on
-backtrack. Copying all domains at every node would be far slower. The mutation stays inside
-`solve`: the CSP record passed in is never changed.
+The search mutates a working copy of the domains and undoes each change from a trail on backtrack.
 """
 
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field, replace
+from collections.abc import Callable
 
-CATEGORIES = ("ingredients", "equipment", "staff", "time", "transport", "dietary", "safety", "collision",
-              "priority", "structure")
+from ..support.csp_build import constraints_by_var
+from ..support.records import CSP, Constraint, SolveResult, SolveStats
 
-Check = Callable[[dict], bool]  # partial assignment -> still consistent?
-Revise = Callable[[str, str, dict], list]  # (xi, xj, domains) -> pruned domain of xi
-
-
-@dataclass(frozen=True)
-class Constraint:
-    scope: tuple[str, ...]
-    check: Check
-    category: str
-    description: str
-    meta: dict = field(default_factory=dict)  # free-form tags, e.g. orders=..., kind=...
-    revise: Revise | None = None  # optional fast AC-3 revise for binary constraints
-
-
-@dataclass(frozen=True)
-class CSP:
-    domains: dict[str, list]
-    constraints: list[Constraint]
-    priority: dict[str, tuple]  # static tie-break for variable ordering
-
-
-@dataclass
-class SolveStats:
-    nodes: int = 0  # values tried during search
-    backtracks: int = 0
-    pruned: int = 0  # values removed by consistency checks
-    seconds: float = 0.0
-
-
-@dataclass(frozen=True)
-class SolveResult:
-    status: str  # "solved" | "infeasible" | "budget" (node limit reached, treated as infeasible)
-    solution: dict | None
-    stats: SolveStats
-    wipeout: Constraint | None = None  # constraint that emptied a domain before search, if any
-    ok: bool = False  # status == "solved"
-
-
-# ---------------------------------------------------------------------------------------------
-# building CSPs
-# ---------------------------------------------------------------------------------------------
-def constraint(scope: Iterable[str], predicate: Callable[..., bool], category: str, description: str,
-               revise: Revise | None = None, **meta) -> Constraint:
-    """Constraint from a predicate over the scope's values, checked once all of them are assigned."""
-    assert category in CATEGORIES, category
-    scope = tuple(scope)
-
-    def check(a: dict) -> bool:
-        try:
-            values = [a[v] for v in scope]
-        except KeyError:
-            return True
-        return predicate(*values)
-
-    return Constraint(scope, check, category, description, meta, revise)
-
-
-def subset(csp: CSP, keep: Callable[[Constraint], bool]) -> CSP:
-    """Same variables, only the constraints for which `keep` is true (used to relax a CSP)."""
-    return replace(csp, constraints=[c for c in csp.constraints if keep(c)])
-
-
-def violated(csp: CSP, a: dict) -> list[Constraint]:
-    """Constraints broken by a complete assignment (an empty list means a valid solution)."""
-    return [c for c in csp.constraints if not c.check(a)]
-
-
-# ---------------------------------------------------------------------------------------------
-# solving
-# ---------------------------------------------------------------------------------------------
-BUDGET = "budget"  # sentinel returned by `backtrack` when the node limit is reached
+BUDGET = "budget"  # returned by `backtrack` when the node limit is reached
 
 
 def solve(csp: CSP, *, node_limit: int = 50_000, ac3_limit: int = 6_000, lcv_limit: int = 2_000,
@@ -106,16 +27,13 @@ def solve(csp: CSP, *, node_limit: int = 50_000, ac3_limit: int = 6_000, lcv_lim
           var_key: Callable[[str], tuple] | None = None, hints: dict | None = None) -> SolveResult:
     """Node consistency, AC-3, then backtracking search with forward checking.
 
-    Optional problem knowledge:
-      value_order(var, values, assignment) -> values   replaces the default LCV ordering
-      var_key(var) -> tuple                            compared before MRV, e.g. "decide menus first"
-      hints {var: value}                               value to try first (warm start)
-    """
+    Optional problem knowledge: `value_order` replaces LCV, `var_key` is compared before MRV,
+    `hints {var: value}` gives a value to try first (warm start)."""
     t0 = time.perf_counter()
     ctx = {
         "csp": csp, "stats": SolveStats(), "node_limit": node_limit, "ac3_limit": ac3_limit,
         "lcv_limit": lcv_limit, "value_order": value_order, "var_key": var_key, "hints": hints or {},
-        "by_var": _constraints_by_var(csp),
+        "by_var": constraints_by_var(csp),
     }
     ctx["neighbors"] = {v: {u for c in cs for u in c.scope if u != v} for v, cs in ctx["by_var"].items()}
     domains = {v: list(d) for v, d in csp.domains.items()}  # working copy, mutated below
@@ -131,14 +49,9 @@ def solve(csp: CSP, *, node_limit: int = 50_000, ac3_limit: int = 6_000, lcv_lim
     return SolveResult(status, sol, ctx["stats"], wipe, status == "solved")
 
 
-def _constraints_by_var(csp: CSP) -> dict[str, list[Constraint]]:
-    by_var: dict[str, list[Constraint]] = {v: [] for v in csp.domains}
-    for c in csp.constraints:
-        for v in c.scope:
-            by_var[v].append(c)
-    return by_var
-
-
+# ---------------------------------------------------------------------------------------------
+# 1. node consistency and 2. AC-3
+# ---------------------------------------------------------------------------------------------
 def node_consistency(ctx, domains) -> Constraint | None:
     """Filter domains with unary constraints. Returns the constraint that emptied a domain, if any."""
     for c in ctx["csp"].constraints:
@@ -185,6 +98,35 @@ def ac3(ctx, domains) -> Constraint | None:
     return None
 
 
+# ---------------------------------------------------------------------------------------------
+# 3. backtracking search
+# ---------------------------------------------------------------------------------------------
+def backtrack(ctx, assign, domains):
+    """Depth-first search over assignments. Returns a solution dict, None, or BUDGET."""
+    if len(assign) == len(domains):
+        return dict(assign)
+    stats = ctx["stats"]
+    var = select_var(ctx, assign, domains)
+    for val in order_values(ctx, var, domains, assign):
+        stats.nodes += 1
+        if stats.nodes > ctx["node_limit"]:
+            return BUDGET
+        if not consistent(ctx, var, val, assign):
+            continue
+        assign[var] = val
+        trail: list = [(var, domains[var])]
+        domains[var] = [val]
+        if forward_check(ctx, var, assign, domains, trail):
+            result = backtrack(ctx, assign, domains)
+            if result is not None:
+                return result  # a solution, or BUDGET bubbling up
+        for y, old in reversed(trail):
+            domains[y] = old
+        del assign[var]
+    stats.backtracks += 1
+    return None
+
+
 def select_var(ctx, assign, domains):
     """MRV, ties broken by degree (most constraints on other variables), then a static key."""
     def key(v):
@@ -195,6 +137,7 @@ def select_var(ctx, assign, domains):
 
 
 def order_values(ctx, var, domains, assign):
+    """LCV (or the problem's own order), with the warm-start hint tried first."""
     values = domains[var]
     if ctx["value_order"] is not None:
         values = ctx["value_order"](var, values, assign)
@@ -239,29 +182,3 @@ def forward_check(ctx, var, assign, domains, trail) -> bool:
                 if not kept:
                     return False
     return True
-
-
-def backtrack(ctx, assign, domains):
-    """Depth-first search over assignments. Returns a solution dict, None, or BUDGET."""
-    if len(assign) == len(domains):
-        return dict(assign)
-    stats = ctx["stats"]
-    var = select_var(ctx, assign, domains)
-    for val in order_values(ctx, var, domains, assign):
-        stats.nodes += 1
-        if stats.nodes > ctx["node_limit"]:
-            return BUDGET
-        if not consistent(ctx, var, val, assign):
-            continue
-        assign[var] = val
-        trail: list = [(var, domains[var])]
-        domains[var] = [val]
-        if forward_check(ctx, var, assign, domains, trail):
-            result = backtrack(ctx, assign, domains)
-            if result is not None:
-                return result  # a solution, or BUDGET bubbling up
-        for y, old in reversed(trail):
-            domains[y] = old
-        del assign[var]
-    stats.backtracks += 1
-    return None

@@ -8,19 +8,9 @@ is currently impossible.
 from __future__ import annotations
 
 import heapq
-from dataclasses import dataclass
 
-from ..env.road_network import RoadNetwork, road_neighbors, straight_line
-
-
-@dataclass
-class Route:
-    origin: str
-    destination: str
-    nodes: list[str]
-    roads: list[str]
-    minutes: float
-    expanded: int = 0
+from ..support.env.road_network import RoadNetwork, road_neighbors, straight_line
+from ..support.records import Route
 
 
 def _search(net: RoadNetwork, origin: str, dest: str, use_heuristic: bool, include_closed: bool) -> Route | None:

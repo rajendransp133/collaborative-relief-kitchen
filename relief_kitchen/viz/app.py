@@ -24,7 +24,7 @@ from .page_kitchen import agent_tooltip, batch_tooltip, draw_kitchen_page, stati
 from .page_overview import draw_overview_page, task_tooltip
 from .state import (PAGES, ViewState, add_event, current, cycle_selection, end_minute, load, new_state, random_road,
                     random_stove, tick)
-from .theme import ORDER_COLORS, PAPER
+from .theme import ORDER_COLORS, PAPER, set_scale, to_logical
 from .widgets import H, W, busy_note, draw_footer, draw_header, draw_help, draw_tooltip, hovered
 
 PAGE_DRAW = {"kitchen": draw_kitchen_page, "delivery": draw_delivery_page, "overview": draw_overview_page}
@@ -37,7 +37,7 @@ def handle_event(st: ViewState, ev) -> bool:
     if ev.type == pygame.QUIT:
         return False
     if ev.type == pygame.MOUSEMOTION:
-        st.mouse = ev.pos
+        st.mouse = to_logical(ev.pos)
     if ev.type == pygame.KEYDOWN:
         k = ev.key
         if k in (pygame.K_ESCAPE, pygame.K_q):
@@ -76,19 +76,61 @@ def handle_event(st: ViewState, ev) -> bool:
             st.show_help = not st.show_help
         elif k == pygame.K_s:
             screenshot(st)
+        elif k == pygame.K_F11:
+            toggle_fullscreen()
     if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+        pos = to_logical(ev.pos)
         for rect, action, value in st.clicks:
-            if rect.collidepoint(ev.pos):
+            if rect.collidepoint(pos):
                 if action == "page":
                     st.page = value
                 elif action == "step":
                     st.step = value
                 elif action == "order":
                     st.selected = value
-        if st.scrub.collidepoint(ev.pos):
-            frac = (ev.pos[0] - st.scrub.x) / max(1, st.scrub.width)
+        if st.scrub.collidepoint(pos):
+            frac = (pos[0] - st.scrub.x) / max(1, st.scrub.width)
             st.minute = max(0.0, min(end_minute(st), frac * st.t_span))
     return True
+
+
+# ---------------------------------------------------------------------------------------------
+# window: sharp on high-DPI screens, resizable, F11 for fullscreen
+# ---------------------------------------------------------------------------------------------
+_window_size = (W, H)  # size to return to when leaving fullscreen
+
+
+def enable_dpi_awareness():
+    """Stop Windows from bitmap-stretching (blurring) the window on scaled displays."""
+    if sys.platform != "win32":
+        return
+    import ctypes
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)  # per-monitor aware
+    except (AttributeError, OSError):
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except (AttributeError, OSError):
+            pass
+
+
+def open_window():
+    """A resizable window filling most of the desktop, with the canvas's aspect ratio."""
+    global _window_size
+    dw, dh = pygame.display.get_desktop_sizes()[0]
+    f = min(dw * 0.92 / W, dh * 0.85 / H)
+    _window_size = (round(W * f), round(H * f))
+    return pygame.display.set_mode(_window_size, pygame.RESIZABLE)
+
+
+def toggle_fullscreen():
+    global _window_size
+    screen = pygame.display.get_surface()
+    if screen.get_flags() & pygame.FULLSCREEN:
+        pygame.display.set_mode(_window_size, pygame.RESIZABLE)
+    else:
+        _window_size = screen.get_size()
+        pygame.display.set_mode((0, 0), pygame.FULLSCREEN)  # (0, 0) = the desktop's own resolution
 
 
 def screenshot(st: ViewState, path: str | None = None):
@@ -101,6 +143,7 @@ def draw(st: ViewState, screen):
     """Paint the current page, then the tooltip for whatever is under the mouse."""
     st.screen = screen
     st.hover = []
+    set_scale(*screen.get_size())
     screen.fill(PAPER)
     draw_header(st, screen)
     r = current(st)
@@ -126,13 +169,19 @@ def main(argv=None):
     ap.add_argument("--step", type=int, default=-1, help="timeline step for --screenshot (-1 = last)")
     ap.add_argument("--select", help="order to select for --screenshot")
     ap.add_argument("--hover", help="mouse position x,y for --screenshot (shows that tooltip)")
+    ap.add_argument("--scale", type=float, default=2.0, help="resolution multiplier for --screenshot")
     args = ap.parse_args(argv)
 
     if args.screenshot:
         os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    else:
+        enable_dpi_awareness()
     pygame.init()
     pygame.display.set_caption("Relief Kitchen – Module 1")
-    screen = pygame.display.set_mode((W, H))
+    if args.screenshot:
+        screen = pygame.display.set_mode((round(W * args.scale), round(H * args.scale)))
+    else:
+        screen = open_window()
     st = new_state(args.scenario, args.page)
     frame_clock = pygame.time.Clock()
 
@@ -140,6 +189,7 @@ def main(argv=None):
         while st.busy or st.pending is not None:
             tick(st, 0)
             pygame.time.wait(50)
+        set_scale(*screen.get_size())
         tick(st, 0)
         st.step = args.step % len(st.steps)
         h, m = map(int, args.at.split(":"))
@@ -162,7 +212,7 @@ def main(argv=None):
         for ev in pygame.event.get():
             running = handle_event(st, ev) and running
         tick(st, dt)
-        draw(st, screen)
+        draw(st, pygame.display.get_surface())  # the surface changes on resize / F11
         pygame.display.flip()
     pygame.quit()
     sys.exit(0)

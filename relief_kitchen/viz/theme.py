@@ -62,27 +62,67 @@ def mix(a, b, t: float):
 
 FAILED_STYLE = (hex_rgb("#ECEAE6"), hex_rgb("#C9C5BE"))
 
+# ---------------------------------------------------------------------------------------------
+# render scale: pages lay out in logical units (a 1440 x 860 canvas); the helpers below draw at
+# the window's real resolution, so text and lines stay sharp at any window size
+# ---------------------------------------------------------------------------------------------
+LOGICAL_W, LOGICAL_H = 1440, 860
+S, OX, OY = 1.0, 0.0, 0.0  # physical pixels per logical unit, and the letterbox offset
+
+
+def set_scale(width: int, height: int):
+    """Fit the logical canvas into a window of `width` x `height` physical pixels (centred)."""
+    global S, OX, OY
+    S = min(width / LOGICAL_W, height / LOGICAL_H)
+    OX, OY = (width - LOGICAL_W * S) / 2, (height - LOGICAL_H * S) / 2
+
+
+def pt(p):
+    """Logical point -> physical point."""
+    return OX + p[0] * S, OY + p[1] * S
+
+
+def prect(r) -> pygame.Rect:
+    """Logical rect -> physical rect; edges are rounded separately so neighbouring cells tile exactly."""
+    x, y, w, h = r
+    x0, y0 = round(OX + x * S), round(OY + y * S)
+    return pygame.Rect(x0, y0, round(OX + (x + w) * S) - x0, round(OY + (y + h) * S) - y0)
+
+
+def to_logical(pos):
+    return (pos[0] - OX) / S, (pos[1] - OY) / S
+
+
+def _px(v: float) -> int:
+    """Logical line width or radius -> whole physical pixels (at least 1)."""
+    return max(1, round(v * S))
+
+
 _FONTS: dict = {}
 _FAMILY = "inter,segoeui,helveticaneue,helvetica,dejavusans,arial"
 
 
 def font(size: int, bold: bool = False) -> pygame.font.Font:
-    key = (size, bold)
+    """Font at the physical pixel size for a logical `size`."""
+    px = max(6, round(size * S))
+    key = (px, bold)
     if key not in _FONTS:
         path = pygame.font.match_font(_FAMILY, bold=bold)
-        _FONTS[key] = pygame.font.Font(path, size) if path else pygame.font.Font(None, int(size * 1.35))
+        _FONTS[key] = pygame.font.Font(path, px) if path else pygame.font.Font(None, int(px * 1.35))
     return _FONTS[key]
 
 
 def text(surf, s, pos, size=13, color=INK, bold=False, anchor="topleft") -> pygame.Rect:
+    """Draw text at a logical position; returns its logical rect (for layout and hover)."""
     img = font(size, bold).render(str(s), True, color)
-    rect = img.get_rect(**{anchor: pos})
-    surf.blit(img, rect)
+    surf.blit(img, img.get_rect(**{anchor: pt(pos)}))
+    rect = pygame.Rect(0, 0, round(img.get_width() / S), round(img.get_height() / S))
+    setattr(rect, anchor, (round(pos[0]), round(pos[1])))
     return rect
 
 
-def text_width(s: str, size: int, bold: bool = False) -> int:
-    return font(size, bold).size(s)[0]
+def text_width(s: str, size: int, bold: bool = False) -> float:
+    return font(size, bold).size(s)[0] / S
 
 
 def fit(s: str, size: int, width: int, bold: bool = False) -> str:
@@ -114,8 +154,35 @@ def section(surf, x, y, title, caption=""):
         text(surf, caption, (r.right + 10, y), 11, FAINT)
 
 
+# ---------------------------------------------------------------------------------------------
+# shapes, all in logical coordinates
+# ---------------------------------------------------------------------------------------------
+def draw_rect(surf, color, r, width=0, border_radius=0, **corners):
+    """pygame.draw.rect in logical units (corner radii such as border_top_left_radius are scaled too)."""
+    corners = {k: round(v * S) for k, v in corners.items()}
+    pygame.draw.rect(surf, color, prect(r), _px(width) if width else 0, round(border_radius * S), **corners)
+
+
+def draw_line(surf, color, a, b, width=1):
+    """Straight line: crisp when horizontal or vertical, anti-aliased otherwise."""
+    (ax, ay), (bx, by) = pt(a), pt(b)
+    w = width * S
+    if round(ax) == round(bx) or round(ay) == round(by):
+        pygame.draw.line(surf, color, (round(ax), round(ay)), (round(bx), round(by)), _px(width))
+    elif w < 1.6:
+        pygame.draw.aaline(surf, color, (ax, ay), (bx, by))
+    else:
+        n = math.hypot(bx - ax, by - ay)
+        nx, ny = -(by - ay) / n * w / 2, (bx - ax) / n * w / 2
+        quad = [(ax + nx, ay + ny), (bx + nx, by + ny), (bx - nx, by - ny), (ax - nx, ay - ny)]
+        pygame.draw.polygon(surf, color, quad)
+        pygame.draw.aalines(surf, color, True, quad)
+        for x, y in ((ax, ay), (bx, by)):  # round caps so joined segments meet cleanly
+            _disc_px(surf, color, x, y, w / 2)
+
+
 def hline(surf, x0, x1, y, color=HAIRLINE):
-    pygame.draw.line(surf, color, (x0, y), (x1, y), 1)
+    draw_line(surf, color, (x0, y), (x1, y), 1)
 
 
 def dashed(surf, color, a, b, width=2, dash=7, gap=5):
@@ -128,28 +195,39 @@ def dashed(surf, color, a, b, width=2, dash=7, gap=5):
     d = 0.0
     while d < length:
         e = min(d + dash, length)
-        pygame.draw.line(surf, color, (ax + ux * d, ay + uy * d), (ax + ux * e, ay + uy * e), width)
+        draw_line(surf, color, (ax + ux * d, ay + uy * d), (ax + ux * e, ay + uy * e), width)
         d = e + gap
 
 
-def aaline(surf, color, a, b, width=1):
-    if width <= 1:
-        pygame.draw.aaline(surf, color, a, b)
-    else:
-        pygame.draw.line(surf, color, a, b, width)
+def _disc_px(surf, color, x, y, r):
+    x, y, r = int(round(x)), int(round(y)), max(1, int(round(r)))
+    gfx.aacircle(surf, x, y, r, color)
+    gfx.filled_circle(surf, x, y, r, color)
 
 
 def disc(surf, color, center, r):
     """Anti-aliased filled circle."""
-    x, y, r = int(round(center[0])), int(round(center[1])), int(round(r))
-    gfx.aacircle(surf, x, y, r, color)
-    gfx.filled_circle(surf, x, y, r, color)
+    x, y = pt(center)
+    _disc_px(surf, color, x, y, r * S)
 
 
 def ring(surf, color, center, r, fill=SURFACE):
-    """Anti-aliased circle outline (2 px) around a filled centre."""
-    x, y, r = int(round(center[0])), int(round(center[1])), int(round(r))
-    gfx.filled_circle(surf, x, y, r, color)
-    gfx.aacircle(surf, x, y, r, color)
-    gfx.filled_circle(surf, x, y, r - 2, fill)
-    gfx.aacircle(surf, x, y, r - 2, fill)
+    """Anti-aliased circle outline (2 logical px) around a filled centre."""
+    x, y = pt(center)
+    _disc_px(surf, color, x, y, r * S)
+    _disc_px(surf, fill, x, y, (r - 2) * S)
+
+
+def shadow(surf, r, radius=8, alpha=22):
+    """Soft drop shadow under a logical rect."""
+    pr = prect(r)
+    layer = pygame.Surface(pr.size, pygame.SRCALPHA)
+    pygame.draw.rect(layer, (0, 0, 0, alpha), layer.get_rect(), border_radius=round(radius * S))
+    surf.blit(layer, pr.topleft)
+
+
+def veil(surf, color, alpha):
+    """Translucent wash over the whole window."""
+    layer = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+    layer.fill((*color, alpha))
+    surf.blit(layer, (0, 0))

@@ -42,13 +42,13 @@ def road_neighbors(net: RoadNetwork, node: str, include_closed: bool = False):
         if not r.open and not include_closed:
             continue
         if r.a == node:
-            yield r.b, r.minutes, r.id
+            yield r.b, r.minutes, r.id      #yields the b, minutes, id of the road one by one
         elif r.b == node:
-            yield r.a, r.minutes, r.id
+            yield r.a, r.minutes, r.id      #yields the a, minutes, id of the road one by one
 
 
 def road_between(net: RoadNetwork, a: str, b: str) -> Road | None:
-    return next((r for r in net.roads.values() if {r.a, r.b} == {a, b}), None)
+    return next((r for r in net.roads.values() if {r.a, r.b} == {a, b}), None)  #return 1 match or none
 
 
 def closed_roads(net: RoadNetwork) -> list[str]:

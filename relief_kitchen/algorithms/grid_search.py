@@ -11,8 +11,8 @@ from __future__ import annotations
 import heapq
 from collections.abc import Callable, Iterable
 
-from ..env.entities import Cell
-from ..env.kitchen_grid import KitchenGrid, neighbors
+from ..support.env.entities import Cell
+from ..support.env.kitchen_grid import KitchenGrid, neighbors
 
 
 def manhattan(a: Cell, b: Cell) -> int:

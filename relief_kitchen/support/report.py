@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from .env.road_network import closed_roads
 from .env.scenario import clock, total_stock
-from .search_csp.diagnosis import summary
-from .search_csp.kitchen_flow import stock_at
-from .search_csp.pipeline import M1Result
+from .diagnosis_checks import summary
+from .kitchen_flow import stock_at
+from .records import M1Result
 
 
 def _table(rows: list[list[str]], header: list[str]) -> str:

@@ -1,7 +1,7 @@
 from conftest import SCENARIOS
-from relief_kitchen.env.entities import recipe_satisfies
-from relief_kitchen.env.scenario import total_stock
-from relief_kitchen.search_csp.pipeline import run_timeline
+from relief_kitchen.support.env.entities import recipe_satisfies
+from relief_kitchen.support.env.scenario import total_stock
+from relief_kitchen.algorithms.planner import run_timeline
 
 
 def test_road_closure_reroutes_hospital():
@@ -36,7 +36,7 @@ def test_kitchen_motion_is_collision_free():
 
 
 def test_events_do_not_modify_the_original_scenario():
-    from relief_kitchen.env import apply_event, load_scenario
+    from relief_kitchen.support.env import apply_event, load_scenario
 
     sc = load_scenario(SCENARIOS / "road_closure.yaml")
     new, _ = apply_event(sc, sc.events[0])

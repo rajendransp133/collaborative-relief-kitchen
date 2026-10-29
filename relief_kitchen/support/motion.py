@@ -8,7 +8,7 @@ Every task gives its agent a list of waypoints (grid cells with a time):
     pack (last stage)  when packing is done, carry the meals to the dispatch door
     task ends, nothing next   walk home (homes keep idle agents out of the way)
 
-At each waypoint time, prioritised planning (space-time A*, see `mapf.py`) moves all agents at
+At each waypoint time, prioritised planning (space-time A*, see `algorithms/mapf.py`) moves all agents at
 once without collisions. A two-step waypoint (pickup, then station) gives two segments in a row.
 If two agents want the same cell, the later one waits on the nearest free cell beside it.
 """
@@ -17,13 +17,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ..env.entities import Cell
-from ..env.kitchen_grid import WALK_SECONDS, KitchenGrid
-from ..env.scenario import Scenario
-from .allocation import Allocation
-from .astar import bfs_distances
+from ..algorithms.grid_search import bfs_distances
+from ..algorithms.mapf import find_conflicts, plan_with_restarts
+from .env.entities import Cell
+from .env.kitchen_grid import WALK_SECONDS, KitchenGrid
+from .env.scenario import Scenario
 from .kitchen_flow import door_station, previous_task
-from .mapf import MAPFResult, find_conflicts, plan_with_restarts
+from .records import Allocation, MAPFResult
 
 
 @dataclass

@@ -1,5 +1,5 @@
-from relief_kitchen.env.kitchen_grid import parse_kitchen
-from relief_kitchen.search_csp.mapf import find_conflicts, prioritized_planning, verify_collision_free
+from relief_kitchen.support.env.kitchen_grid import parse_kitchen
+from relief_kitchen.algorithms.mapf import find_conflicts, prioritized_planning, verify_collision_free
 
 # a two-lane aisle: agents swapping ends must not meet head-on or swap cells
 AISLE = parse_kitchen([

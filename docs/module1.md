@@ -1,9 +1,16 @@
 # Module 1: Search and Constraint Satisfaction
 
 Module 1 decides who does what, on which station, by which path, and with which vehicle. It also
-decides whether each order can be met, and if not, why. All algorithms are written from scratch
-in `relief_kitchen/search_csp/`. Every technique below is either a CS 188 topic or basic graph
-theory.
+decides whether each order can be met, and if not, why. All algorithms are written from scratch. Every technique below is either a CS 188 topic or basic
+graph theory.
+
+The code is in three parts:
+
+| Part | Folder | What |
+|---|---|---|
+| 1. Visualiser | `relief_kitchen/viz/` | Pygame pages, drawing helpers, input |
+| 2. Algorithms (present these) | `relief_kitchen/algorithms/` | `grid_search`, `mapf`, `routing`, `csp`, `kitchen_csp`, `diagnosis`, `planner` |
+| 3. Support | `relief_kitchen/support/` | Environment (`env/`), records, CSP-building and model helpers, motion, food flow, report, CLI |
 
 ![Kitchen page: agents carry batches between stations; hovering a stove shows what it is cooking](img/kitchen.png)
 
@@ -11,24 +18,24 @@ theory.
 
 | Graph | Nodes / edges | File |
 |---|---|---|
-| Kitchen grid | Floor cells, 4-connected. Shelves `S`, prep counters `P`, stoves `C`, steamer `T`, packing tables `K` and the door `D` are not walkable; each is used from its *access cell*. | `env/kitchen_grid.py` |
-| Road network | Kitchen, junctions, shelters and the hospital; weighted by travel minutes; roads can close | `env/road_network.py` |
-| Task-dependency DAG | Per order: batches of ≤ 50 meals, each running `fetch → prep → cook → pack`. Every pack feeds one `dispatch` node. | `search_csp/task_graph.py` |
+| Kitchen grid | Floor cells, 4-connected. Shelves `S`, prep counters `P`, stoves `C`, steamer `T`, packing tables `K` and the door `D` are not walkable; each is used from its *access cell*. | `support/env/kitchen_grid.py` |
+| Road network | Kitchen, junctions, shelters and the hospital; weighted by travel minutes; roads can close | `support/env/road_network.py` |
+| Task-dependency DAG | Per order: batches of ≤ 50 meals, each running `fetch → prep → cook → pack`. Every pack feeds one `dispatch` node. | `support/task_graph.py` |
 
 ## 2. Search
 
 | Problem | Algorithm | CS 188 topic | File |
 |---|---|---|---|
-| Path for one agent | A\* with the Manhattan heuristic | A\* search | `astar.py` |
-| Nearest ingredient shelf or working stove | BFS distances, then sort | BFS | `locate.py` |
-| Delivery route; reroute after a closure | Uniform-cost search (Dijkstra) and A\* with a straight-line heuristic | UCS, A\*, admissible heuristics | `routing.py` |
-| Collision-free movement of all agents | Prioritised planning: agents planned one by one with A\* over (cell, time) states, avoiding cells and moves already reserved | A\* (state = cell + time) | `mapf.py`, `motion.py` |
-| Critical path of an order | Topological sort, then longest path in the DAG | Graph basics | `task_graph.py` |
+| Path for one agent | A\* with the Manhattan heuristic | A\* search | `algorithms/grid_search.py` |
+| Nearest ingredient shelf or working stove | BFS distances, then sort | BFS | `support/locate.py` |
+| Delivery route; reroute after a closure | Uniform-cost search (Dijkstra) and A\* with a straight-line heuristic | UCS, A\*, admissible heuristics | `algorithms/routing.py` |
+| Collision-free movement of all agents | Prioritised planning: agents planned one by one with A\* over (cell, time) states, avoiding cells and moves already reserved | A\* (state = cell + time) | `algorithms/mapf.py`, `support/motion.py` |
+| Critical path of an order | Topological sort, then longest path in the DAG | Graph basics | `support/task_graph.py` |
 
 Prioritised planning is fast but not complete: an unlucky agent order can block a solvable case
 (`tests/test_mapf.py` shows one). In the kitchen scenarios it always succeeds, with 0 collisions.
 
-## 3. Task and resource allocation as a CSP
+## 3. Task and resource allocation as a CSP (`algorithms/kitchen_csp.py`)
 
 Time is split into 5-minute slots. Variables for each order `O`:
 
@@ -68,7 +75,7 @@ reserved for the whole task, so the existing "one task per agent" and "one batch
 constraints also cover carrying. The tests check that each budget covers the real walk between the
 two scheduled stations.
 
-**Solver** (`csp.py`, generic; the tests also solve map colouring) works in three steps:
+**Solver** (`algorithms/csp.py`, generic; the tests also solve map colouring) works in three steps:
 
 1. **Node consistency.** Unary constraints prune domains.
 2. **AC-3** on binary constraints. Precedence has a cheap `revise`, so earliest-start and
@@ -79,13 +86,13 @@ two scheduled stations.
      least-busy agent. LCV would be slow on hundreds of values per task.
    - Variables are taken in phases: menus, then tasks, then vehicles.
 
-**Order acceptance** (`pipeline.py`):
+**Order acceptance** (`algorithms/planner.py`):
 - Orders are added most urgent first.
 - After each addition the CSP is re-solved, starting from the previous solution.
 - If the CSP fails (or exceeds 3000 search nodes), the order is rejected and diagnosed, and the
   other orders are still served.
 
-## 4. Infeasibility diagnosis (`diagnosis.py`)
+## 4. Infeasibility diagnosis (`algorithms/diagnosis.py`)
 
 **Step 1: direct checks, one per category, without search.**
 
@@ -129,7 +136,7 @@ O5 (School Shelter A, 60 meals): staff         - everyone who can 'cook' is off 
 
 ![Delivery page: R7 closed, the hospital route moves to R14; hovering the hospital shows its orders](img/delivery.png)
 
-## 6. The kitchen, step by step (`kitchen_flow.py`, `motion.py`)
+## 6. The kitchen, step by step (`support/kitchen_flow.py`, `support/motion.py`)
 
 These are pure functions over the schedule. They drive the visualiser and the report:
 

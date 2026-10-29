@@ -17,10 +17,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..env.kitchen_grid import stations_of
-from ..env.scenario import Scenario
-from .allocation import Allocation, ScheduledTask
-from .astar import bfs_distances
+from ..algorithms.grid_search import bfs_distances
+from .env.kitchen_grid import stations_of
+from .env.scenario import Scenario
+from .records import Allocation, ScheduledTask
 
 STAGE_VERB = {"fetch": "Collecting ingredients", "prep": "Washing and cutting", "cook": "Cooking",
               "pack": "Packing"}

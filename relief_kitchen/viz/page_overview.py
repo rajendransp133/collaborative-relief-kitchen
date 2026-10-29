@@ -6,12 +6,12 @@ import math
 
 import pygame
 
-from ..env.scenario import clock
+from ..support.env.scenario import clock
 from .page_delivery import draw_network_map
 from .page_kitchen import draw_kitchen_map
 from .state import ViewState, end_minute, sorted_orders
-from .theme import (ACCENT, BAND, ERROR, FAINT, GRID, HAIRLINE, HIGHLIGHT, INK, MUTED, SURFACE, disc, fit, hline,
-                    mix, section, text, text_width, wrap)
+from .theme import (ACCENT, BAND, ERROR, FAINT, GRID, HAIRLINE, HIGHLIGHT, INK, MUTED, SURFACE, disc, draw_line,
+                    draw_rect, fit, hline, mix, section, text, text_width, wrap)
 from .widgets import CONTENT_BOTTOM, CONTENT_TOP, M, W
 
 KITCHEN = pygame.Rect(M, CONTENT_TOP, 640, 330)
@@ -27,9 +27,9 @@ def draw_overview_page(st: ViewState, s, r):
     section(s, NETWORK.x, NETWORK.y, "Delivery network", "see the Delivery page for details")
     draw_network_map(st, s, r, pygame.Rect(NETWORK.x + 20, NETWORK.y + 40, NETWORK.width - 170, NETWORK.height - 70),
                      detailed=False)
-    pygame.draw.line(s, HAIRLINE, (672, KITCHEN.y), (672, KITCHEN.bottom))
+    draw_line(s, HAIRLINE, (672, KITCHEN.y), (672, KITCHEN.bottom))
     hline(s, M, W - M, KITCHEN.bottom + 8)
-    pygame.draw.line(s, HAIRLINE, (936, SCHEDULE.y), (936, SCHEDULE.bottom))
+    draw_line(s, HAIRLINE, (936, SCHEDULE.y), (936, SCHEDULE.bottom))
     draw_schedule(st, s, r, SCHEDULE)
     draw_orders(st, s, r, ORDERS)
 
@@ -59,17 +59,17 @@ def draw_schedule(st: ViewState, s, r, rect):
     rh = (bottom - top) / len(rows)
     tx = lambda m: left + (right - left) * m / span  # noqa: E731
 
-    pygame.draw.rect(s, SURFACE, (left, top, right - left, bottom - top))
+    draw_rect(s, SURFACE, (left, top, right - left, bottom - top))
     for i, (kind, rid) in enumerate(rows):
         y = top + i * rh
         if i % 2:
-            pygame.draw.rect(s, BAND, (left, y, right - left, rh))
+            draw_rect(s, BAND, (left, y, right - left, rh))
         label = rid if kind == "agent" else f"{rid}  ·  {sc.vehicles[rid].capacity}"
         text(s, label, (rect.x, y + rh / 2), 12, INK if kind == "agent" else MUTED, anchor="midleft")
     now_x = tx(st.minute)
     for m in range(0, int(span) + 1, 30):
         x = tx(m)
-        pygame.draw.line(s, HAIRLINE if m % 60 == 0 else GRID, (x, top), (x, bottom))
+        draw_line(s, HAIRLINE if m % 60 == 0 else GRID, (x, top), (x, bottom))
         if m % 60 == 0 and abs(x - now_x) > 34:  # keep clear of the "now" tag
             text(s, clock(sc, m), (x, top - 18), 11, MUTED, anchor="midtop")
     hline(s, left, right, top)
@@ -81,16 +81,16 @@ def draw_schedule(st: ViewState, s, r, rect):
         y = top + agents.index(t.agent) * rh
         bar = pygame.Rect(tx(t.start) + 1, y + 5, max(2, tx(t.end) - tx(t.start) - 2), rh - 10)
         col = st.order_color.get(t.order, ACCENT)
-        pygame.draw.rect(s, col, bar, border_radius=3)
+        draw_rect(s, col, bar, border_radius=3)
         # lighter lead-in / tail: carrying the batch in from the previous station, out to the door
         lead = pygame.Rect(bar.x, bar.y, max(0, tx(t.start + t.carry_in) - tx(t.start)), bar.height)
-        pygame.draw.rect(s, mix(col, SURFACE, 0.55), lead, border_top_left_radius=3, border_bottom_left_radius=3)
+        draw_rect(s, mix(col, SURFACE, 0.55), lead, border_top_left_radius=3, border_bottom_left_radius=3)
         if t.carry_out:
             tail = pygame.Rect(tx(t.end - t.carry_out), bar.y, tx(t.end) - tx(t.end - t.carry_out) - 1, bar.height)
-            pygame.draw.rect(s, mix(col, SURFACE, 0.55), tail, border_top_right_radius=3, border_bottom_right_radius=3)
+            draw_rect(s, mix(col, SURFACE, 0.55), tail, border_top_right_radius=3, border_bottom_right_radius=3)
         st.hover.append((bar, "task", t.id))
         if st.selected == t.order:
-            pygame.draw.rect(s, INK, bar.inflate(2, 2), 1, border_radius=4)
+            draw_rect(s, INK, bar.inflate(2, 2), 1, border_radius=4)
         solid = pygame.Rect(lead.right, bar.y, bar.right - lead.right, bar.height)
         for label in (f"{t.order} {t.stage}", t.stage[0].upper()):
             if text_width(label, 10) < solid.width - 6:
@@ -101,9 +101,9 @@ def draw_schedule(st: ViewState, s, r, rect):
         y = top + (len(agents) + vehicles.index(d.vehicle)) * rh
         col = st.order_color.get(d.order, ACCENT)
         out = pygame.Rect(tx(d.depart), y + 5, max(2, tx(d.arrive) - tx(d.depart)), rh - 10)
-        pygame.draw.rect(s, col, out, border_radius=3)
-        pygame.draw.line(s, col, (out.right, y + rh / 2), (tx(d.back), y + rh / 2), 2)
-        pygame.draw.line(s, col, (tx(d.back), y + rh / 2 - 4), (tx(d.back), y + rh / 2 + 4), 2)
+        draw_rect(s, col, out, border_radius=3)
+        draw_line(s, col, (out.right, y + rh / 2), (tx(d.back), y + rh / 2), 2)
+        draw_line(s, col, (tx(d.back), y + rh / 2 - 4), (tx(d.back), y + rh / 2 + 4), 2)
         label = f"{d.order} → {sc.roads.places[d.destination].label}"
         for lab in (label, d.order):
             if text_width(lab, 10) < out.width - 6:
@@ -115,15 +115,15 @@ def draw_schedule(st: ViewState, s, r, rect):
         if o.deadline <= span:
             x = tx(o.deadline)
             col = st.order_color.get(o.id, ACCENT)
-            pygame.draw.line(s, col, (x, bottom + 2), (x, bottom + 8), 2)
+            draw_line(s, col, (x, bottom + 2), (x, bottom + 8), 2)
             text(s, o.id, (x, bottom + 10), 10, MUTED, anchor="midtop")
     text(s, "due", (rect.x, bottom + 10), 10, FAINT)
 
     # now
     x = tx(st.minute)
-    pygame.draw.line(s, ACCENT, (x, top), (x, bottom), 2)
+    draw_line(s, ACCENT, (x, top), (x, bottom), 2)
     tag = text(s, clock(sc, st.minute), (x, top - 4), 10, SURFACE, True, anchor="midbottom")
-    pygame.draw.rect(s, ACCENT, tag.inflate(8, 2), border_radius=3)
+    draw_rect(s, ACCENT, tag.inflate(8, 2), border_radius=3)
     text(s, clock(sc, st.minute), (x, top - 4), 10, SURFACE, True, anchor="midbottom")
 
 
@@ -142,7 +142,7 @@ def draw_orders(st: ViewState, s, r, rect):
     for o in sorted_orders(r):
         row = pygame.Rect(x0, y, rect.width, 24)
         if st.selected == o.id:
-            pygame.draw.rect(s, HIGHLIGHT, row)
+            draw_rect(s, HIGHLIGHT, row)
         disc(s, st.order_color.get(o.id, ACCENT), (x0 + 6, row.centery), 4)
         text(s, o.id, (x0 + 16, row.centery), 12, INK, True, anchor="midleft")
         dest = fit(sc.roads.places[o.destination].label, 12, 150)

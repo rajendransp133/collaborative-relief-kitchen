@@ -6,12 +6,12 @@ import math
 
 import pygame
 
-from ..env.road_network import road_between
-from ..env.scenario import clock
-from ..search_csp.allocation import UNLOAD_MINUTES
+from ..support.env.road_network import road_between
+from ..support.env.scenario import clock
+from ..support.model_helpers import UNLOAD_MINUTES
 from .state import ViewState
-from .theme import (ACCENT, ERROR, FAINT, HAIRLINE, INK, MUTED, OK, PAPER, ROAD, SURFACE, dashed, disc, fit,
-                    hline, ring, section, text)
+from .theme import (ACCENT, ERROR, FAINT, HAIRLINE, INK, MUTED, OK, PAPER, ROAD, SURFACE, dashed, disc, draw_line,
+                    draw_rect, fit, hline, ring, section, text)
 from .widgets import CONTENT_BOTTOM, CONTENT_TOP, M, W, meter
 
 
@@ -77,7 +77,7 @@ def draw_network_map(st: ViewState, s, r, area: pygame.Rect, detailed: bool = Tr
         n = math.hypot(b[0] - a[0], b[1] - a[1]) or 1
         nx, ny = -(b[1] - a[1]) / n, (b[0] - a[0]) / n
         if road.open:
-            pygame.draw.line(s, ROAD, a, b, 3 if detailed else 2)
+            draw_line(s, ROAD, a, b, 3 if detailed else 2)
             text(s, f"{road.minutes:g}′", (mx + nx * 12, my + ny * 12), 10 if detailed else 9, FAINT, anchor="center")
         else:
             dashed(s, ERROR, a, b, 2)
@@ -85,7 +85,7 @@ def draw_network_map(st: ViewState, s, r, area: pygame.Rect, detailed: bool = Tr
         orders = used_by.get(road.id, [])
         for i, oid in enumerate(orders):
             off = (i - (len(orders) - 1) / 2) * (5 if detailed else 4)
-            pygame.draw.line(s, st.order_color.get(oid, ACCENT), (a[0] + nx * off, a[1] + ny * off),
+            draw_line(s, st.order_color.get(oid, ACCENT), (a[0] + nx * off, a[1] + ny * off),
                              (b[0] + nx * off, b[1] + ny * off), 3)
         # hover: a small box at the middle of the road
         st.hover.append((pygame.Rect(mx - 14, my - 10, 28, 20), "road", road.id))
@@ -99,11 +99,11 @@ def draw_network_map(st: ViewState, s, r, area: pygame.Rect, detailed: bool = Tr
             continue
         size = 1.25 if detailed else 1.0
         if p.kind == "depot":
-            pygame.draw.rect(s, INK, (x - 8 * size, y - 8 * size, 16 * size, 16 * size), border_radius=2)
+            draw_rect(s, INK, (x - 8 * size, y - 8 * size, 16 * size, 16 * size), border_radius=2)
         elif p.kind == "hospital":
             disc(s, INK, (x, y), 10 * size)
-            pygame.draw.rect(s, SURFACE, (x - 1.5, y - 6, 3, 12))
-            pygame.draw.rect(s, SURFACE, (x - 6, y - 1.5, 12, 3))
+            draw_rect(s, SURFACE, (x - 1.5, y - 6, 3, 12))
+            draw_rect(s, SURFACE, (x - 6, y - 1.5, 12, 3))
         else:
             ring(s, INK, (x, y), 9 * size, PAPER)
         reachable = p.kind == "depot" or r.routes.get(p.id) is not None
@@ -122,7 +122,7 @@ def draw_network_map(st: ViewState, s, r, area: pygame.Rect, detailed: bool = Tr
                 continue
             box = pygame.Rect(0, 0, 30 if detailed else 26, 18 if detailed else 16)
             box.center = pos
-            pygame.draw.rect(s, st.order_color.get(d.order, ACCENT), box, border_radius=3)
+            draw_rect(s, st.order_color.get(d.order, ACCENT), box, border_radius=3)
             text(s, d.vehicle, box.center, 10, SURFACE, True, anchor="center")
             st.hover.append((box.inflate(6, 6), "vehicle", d.order))
     return to_px
@@ -131,7 +131,7 @@ def draw_network_map(st: ViewState, s, r, area: pygame.Rect, detailed: bool = Tr
 def draw_delivery_page(st: ViewState, s, r):
     section(s, M, CONTENT_TOP, "Delivery network", "weighted road graph  ·  A* routes  ·  hover places, roads, vehicles")
     draw_network_map(st, s, r, pygame.Rect(M + 40, CONTENT_TOP + 60, 700, CONTENT_BOTTOM - CONTENT_TOP - 120))
-    pygame.draw.line(s, HAIRLINE, (928, CONTENT_TOP), (928, CONTENT_BOTTOM))
+    draw_line(s, HAIRLINE, (928, CONTENT_TOP), (928, CONTENT_BOTTOM))
     right = pygame.Rect(948, CONTENT_TOP, W - M - 948, CONTENT_BOTTOM - CONTENT_TOP)
     y = draw_delivery_table(st, s, r, right)
     y = draw_vehicle_panel(st, s, r, pygame.Rect(right.x, y + 18, right.width, 200))

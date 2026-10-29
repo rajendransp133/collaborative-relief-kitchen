@@ -13,8 +13,9 @@ from pathlib import Path
 
 import pygame
 
-from ..env.scenario import Event, apply_event, load_scenario
-from ..search_csp.pipeline import M1Result, solve_scenario
+from ..support.env.scenario import Event, apply_event, load_scenario
+from ..algorithms.planner import solve_scenario
+from ..support.records import M1Result
 
 PAGES = ("kitchen", "delivery", "overview")
 

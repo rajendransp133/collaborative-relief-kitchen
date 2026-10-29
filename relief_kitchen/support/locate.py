@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..env.entities import Cell, Station
-from ..env.kitchen_grid import KitchenGrid, stations_of
-from .astar import astar, bfs_distances
+from ..algorithms.grid_search import astar, bfs_distances
+from .env.entities import Cell, Station
+from .env.kitchen_grid import KitchenGrid, stations_of
 
 
 @dataclass

@@ -1,8 +1,8 @@
 import pytest
 
 from conftest import SCENARIOS
-from relief_kitchen.env import load_scenario
-from relief_kitchen.search_csp.pipeline import run_timeline, solve_scenario
+from relief_kitchen.support.env import load_scenario
+from relief_kitchen.algorithms.planner import run_timeline, solve_scenario
 
 
 @pytest.fixture(scope="module")
