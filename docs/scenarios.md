@@ -225,7 +225,8 @@ against M1 instead: both times M1 still cooks every order (only 9 kg of the 12 k
 P(supply) stays at 0.05, the risk stays at 0.115 and no contingency appears. The Uncertainty page
 shows each stock count and says why the belief did not move.
 
-**Show in class:** the Kitchen page (the stock bars) and the Uncertainty page (`U`) at step 2.
+**Show in class:** the Overview page, where a swapped menu is highlighted ("Millet khichdi, was
+Rice and dal"); the Kitchen page's Stock tab; and the Uncertainty page (`U`) at step 2.
 
 ## 8. `road_closure.yaml`: road closure
 
@@ -255,7 +256,7 @@ line is visible. Press `R` to close another road live.
 |---|---|---|
 | 0 | none | Cooking spread over C1, C2 and C3 |
 | 1 | C2 fails | **All orders still served.** C1 now cooks O1 and both O2 batches. O3's two 30-meal batches go to the small stove C3. O2 leaves later and arrives 12:04 (deadline 12:30). |
-| 2 | C1 fails too | Only C3 is left (30 meals max). O1 is split into **2 × 20** and O3 into 2 × 30, all on C3. **O2 is rejected (contention)** for equipment: the one stove left is fully booked. |
+| 2 | C1 fails too | Only C3 is left (30 meals max). O1 is split into **2 × 20** and O3 into 2 × 30, all on C3. O1 now arrives 11:06 and O3 12:48. **O2 is rejected for equipment (isolated)**: even on its own, its 100 meals cannot be cooked on the one small stove left. Relaxing the equipment constraints is what lets it through. |
 
 **M3.** P(stove) goes 0.05 → 0.486 → 0.945, and the analytical risk goes 0.115 → 0.479 → 0.861,
 the biggest rise of any scenario. The stove contingencies ("split batch across the remaining

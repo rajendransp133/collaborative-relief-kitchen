@@ -256,7 +256,7 @@ collaborative-relief-kitchen/
 ## Getting started
 
 > [!NOTE]
-> The project is in early development. The commands below describe the intended interface and will start working as each module lands.
+> Modules 1–3 work today; M4, M5 and the evaluation runner are still planned. The "planned entry points" below describe the intended interface for those.
 
 ```bash
 git clone https://github.com/<your-username>/collaborative-relief-kitchen.git
@@ -266,11 +266,15 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Module 1 (available now):
+Modules 1–3 (available now):
 
 ```bash
-# Text report: routes, CSP schedule, MAPF stats and infeasibility diagnosis for each timeline step
+# M1 text report: routes, CSP schedule, MAPF stats and infeasibility diagnosis for each timeline step
 python -m relief_kitchen.run --scenario configs/scenarios/infeasible.yaml
+
+# M2 partial-order plan and schedule; M3 belief, Bayes updates, risk and contingencies per step
+python -m relief_kitchen.run --module m2
+python -m relief_kitchen.run --module m3 --scenario configs/scenarios/stove_failure.yaml
 
 # Pygame visualiser: Kitchen, Delivery, Overview (M1), Planning (M2) and Uncertainty (M3) pages
 python -m relief_kitchen.viz --scenario configs/scenarios/road_closure.yaml
@@ -282,9 +286,6 @@ pytest -q
 Planned entry points:
 
 ```bash
-# Run one scenario end to end
-python -m relief_kitchen.run --scenario configs/scenarios/road_closure.yaml
-
 # Compare all setups across all scenarios
 python -m relief_kitchen.evaluation.compare --methods full independent fixed greedy
 ```
@@ -306,8 +307,10 @@ M5 needs an LLM with tool calling (a hosted API or a local model); configuration
 
 - [ ] **Environment:** kitchen grid, road network, scenario format, event generator, PettingZoo wrapper
 - [x] **M1:** A\* and multi-agent paths, road routing, CSP model, infeasibility diagnosis ([details](docs/module1.md))
-- [ ] **M2:** action schema, partial-order planner, resource scheduling, local plan repair
-- [ ] **M3:** belief models, on-time and stock-sufficiency probabilities, provenance tags, contingencies
+- [x] **M2:** action schema, partial-order planner (causal links, threat resolution), greedy scheduler ([details](docs/module2.md))
+- [ ] **M2 (remaining):** local plan repair
+- [x] **M3:** Bayesian belief updates, analytical and Monte Carlo plan risk, stock checks against M1, contingencies ([details](docs/module3.md))
+- [ ] **M3 (remaining):** Beta–Bernoulli equipment models, road/travel-time Bayesian network, demand beliefs, provenance tags
 - [ ] **M4:** reward design, IQL baseline, VDN / QMIX / MAPPO, comparison with heuristic baselines
 - [ ] **M5:** role agents, message protocol, coordinator replanning loop, explanations
 - [ ] **Integration:** full pipeline on the combined scenario

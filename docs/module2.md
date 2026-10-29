@@ -126,8 +126,9 @@ gives each step the earliest start that satisfies two rules:
 | pack_1 | 60 | 10 min | 70 |
 
 The **makespan is 70 minutes**. This is the same "kitchen chain" that Module 1's time diagnosis
-uses. In `infeasible.yaml`, an order due at 09:00 is rejected because the chain alone takes 70
-minutes of work, before any carrying or driving.
+uses; M1 adds the carry-in and carry-out walks on top. In `infeasible.yaml`, O6 is due at 09:00,
+only 60 minutes after the day starts, so the 70 minutes of work alone already miss it. With
+carrying, M1 reports 106 min of kitchen work plus a 33 min drive.
 
 ## 5. Running it
 

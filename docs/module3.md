@@ -242,9 +242,9 @@ through the disruptions.
 
 | Panel | Shows |
 |---|---|
-| **Belief** | One bar per variable, with a grey tick at the 0.05 prior and a red tick at the 0.40 threshold. A value turns red once it is above the threshold. **Hover a row** to see the sensor model (or, for Supply, the stock rule) and that variable's value at every step. |
-| **Belief over the timeline** | A line chart of the three probabilities over the plan steps, with the dashed 0.40 threshold and the current step marked. Where lines overlap (e.g. road and supply both at 0.05), they are drawn as alternating dashes so both stay visible. |
-| **Bayes update** | The formula filled in with this step's numbers, e.g. `0.90 × 0.050 / (0.90 × 0.050 + 0.05 × 0.950) = 0.486`, Stock changes are listed as "Stock count S1 rice: 40 → 6 kg" with M1's verdict ("M1 still cooks every order → Supply stays 0.05", or "M1 cannot cook O4 → Supply = 1.00"). At step 0 it explains the prior. At a step with no stove, road or stock change it says the belief is unchanged. |
+| **Belief** | One bar per variable, with a red tick at the 0.40 threshold. At or above the threshold, the bar and value turn red and the row says "above threshold". **Hover a row** to see the prior, the sensor model (or, for Supply, the stock rule) and that variable's value at every step. |
+| **Belief over the plan steps** | A line chart of the three probabilities over the plan steps, with the dashed 0.40 threshold and the current step marked. Where lines overlap (e.g. road and supply both at 0.05), the shared segment alternates their colours in short dashes so every line stays visible. |
+| **Bayes update** | The formula filled in with this step's numbers, e.g. `0.90 × 0.050 / (0.90 × 0.050 + 0.05 × 0.950) = 0.486`. Stock changes are listed as "Stock count S1 rice: 40 → 6 kg", followed by M1's verdict ("Counted, not guessed: M1 still cooks every order → Supply stays 0.05", or "… M1 cannot cook O4 → Supply = 1.00"). At step 0 it explains the prior, plus the verdict if an order is already short (as in `infeasible.yaml`). At a step with no stove, road or stock change it says the belief is unchanged. |
 | **Plan risk** | Monte Carlo and analytical risk as bars with their previous-step values ("was …"), and the per-stage table: stage, variable, weight and weight × p. |
 | **Contingencies** | The `suggest_contingency` actions for every variable at or above 0.40. |
 

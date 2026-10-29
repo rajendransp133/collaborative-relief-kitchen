@@ -33,7 +33,7 @@ uncertainty). [scenarios.md](scenarios.md) explains every scenario step by step.
 | Path for one agent | A\* with the Manhattan heuristic | A\* search | `algorithms/grid_search.py` |
 | Nearest ingredient shelf or working stove | BFS distances, then sort | BFS | `support/locate.py` |
 | Delivery route; reroute after a closure | Uniform-cost search (Dijkstra) and A\* with a straight-line heuristic | UCS, A\*, admissible heuristics | `algorithms/routing.py` |
-| Collision-free movement of all agents | Prioritised planning: agents planned one by one with A\* over (cell, time) states, avoiding cells and moves already reserved | A\* (state = cell + time) | `algorithms/mapf.py`, `support/motion.py` |
+| Collision-free movement of all agents | Prioritised planning: agents planned one by one with A\* over (cell, time) states, avoiding cells and moves already reserved | A\* (state = cell + time) | `algorithms/mapf.py`, `algorithms/grid_search.py` (`space_time_astar`), `support/motion.py` |
 | Critical path of an order | Topological sort, then longest path in the DAG | Graph basics | `support/task_graph.py` |
 
 Prioritised planning is fast but not complete: an unlucky agent order can block a solvable case
@@ -54,7 +54,7 @@ Packing agent, station and start into one value keeps every resource rule binary
 
 | Category | Constraints |
 |---|---|
-| dietary | Chosen recipe satisfies the diet (`diabetic`, `soft`, `infant`, `nut_free`, `gluten_free`) |
+| dietary | Chosen recipe satisfies the diet: it carries every required tag (`vegetarian`, `diabetic`, `soft`, `infant`) and none of the allergens an `X_free` tag rules out (`nut_free`, `gluten_free`) |
 | ingredients | Total ingredient use ≤ stock (global); the fetch shelf stocks the recipe's main ingredient |
 | equipment | Station works; station capacity ≥ batch size; station type suits the recipe; one batch per station at a time (workspace occupancy) |
 | staff | Agent has the skill; task inside the agent's shift; one task per agent at a time |
@@ -90,7 +90,8 @@ two scheduled stations.
      least-busy agent. LCV would be slow on hundreds of values per task.
    - Variables are taken in phases: menus, then tasks, then vehicles.
 
-For `base.yaml`, the last solve takes 26 search nodes and 0 backtracks, about 60–80 ms.
+For `base.yaml`, the last solve takes 26 search nodes and 0 backtracks, about 60 ms (the time
+depends on the machine).
 
 **Order acceptance** (`algorithms/planner.py`):
 - Orders are added most urgent first.
@@ -115,10 +116,16 @@ it is impossible even on its own.
 | time | Is release + critical path + fastest drive ≤ deadline? |
 
 **Step 2: relax one category at a time.** This runs only if every check passes but the CSP still
-fails. The order is then in *contention*: it competes with accepted orders. The module drops one
-category's constraints for this order and re-solves. Every category whose removal lets the order
-through is reported as a cause. For example, in `stove_failure.yaml`, once C1 and C2 are both down,
-O2 is rejected for equipment (the one stove left is fully booked).
+fails. The module first solves the order on its own. If that works, the order is in *contention*:
+it competes with accepted orders, so the relaxation is done next to them. If it fails even alone,
+the order is still *isolated* and is relaxed on its own. Either way, the module drops one
+category's constraints for this order and re-solves, and every category whose removal lets the
+order through is reported as a cause. For example:
+
+- In `demand_surge.yaml` step 1, O2 (180 meals) fits on its own but not next to the hospital and
+  Shelter B orders: *contention*, for equipment + transport + safety.
+- In `stove_failure.yaml`, once C1 and C2 are both down, O2 (100 meals) cannot be cooked even on
+  its own with only the small stove C3: *isolated*, for equipment.
 
 Output of `configs/scenarios/infeasible.yaml`:
 
@@ -173,7 +180,7 @@ plan step.
 | **Scenarios** (`C`, or click the scenario name in the header) | One row per scenario file: its name, scripted disruptions, orders and meals. Click a row (or press its number) to load and solve it. |
 | **Kitchen** (`K`) | Floor card: the kitchen tinted by zone, with zone labels (Storage, Packing, Out across the top; Prep and Cooking down the side). A busy station is darker, with a dot in its order's colour and a progress bar. A failed station is hatched red with its id struck through. Agents walk on collision-free paths; grey dots show the move they are making. Coloured squares are food batches (I ingredients, P prepped, C cooked, K packed). On the right, the **Kitchen now** card lists what every station is doing. Below it, the **Batches** card has one row per batch: where it is now, four stage pips (prep, cook, pack, road: filled when done, outlined while running) and when it reaches the door. A red "+N min" means it is later than in the initial plan. Its **Stock** tab shows the kg left on each shelf. |
 | **Delivery** (`V`) | Road network with closures (dashed), A\* routes and vehicles moving. Deliveries card (arrival, vehicle, due time, or why it was not delivered) and Vehicles card (what each is doing, busy time). Closed roads are named in the map card's title. |
-| **Overview** (`O`) | Small maps, the CSP schedule (the lighter ends of a bar are carrying the batch in or out to the door), and the orders with their diagnosis. |
+| **Overview** (`O`) | Small maps, the CSP schedule (the lighter ends of a bar are carrying the batch in or out to the door), and the orders. Each served order shows its arrival time and menu; if the solver swapped the menu since the previous plan step, it is highlighted with "was …" (e.g. `rice_shortage` step 1: O3 "Millet khichdi, was Rice and dal"). A selected rejected order shows its diagnosis: "Cannot be met on its own" (isolated) or "Does not fit next to more urgent orders" (contention), with the cause categories. |
 | **Planning** (`L`) | Module 2: the partial-order plan, its schedule and the POP trace. See [module2.md](module2.md) §6. |
 | **Uncertainty** (`U`) | Module 3: belief bars, belief over the plan steps, the worked Bayes update, plan risk and contingencies. See [module3.md](module3.md) §9. |
 
@@ -192,8 +199,10 @@ its details in the card at the top right. They then stay visible while you talk 
   from C2".
 - A shelf shows its stock, an agent its tasks for the day, and a batch its full plan, including the
   road leg.
-- A prep counter, stove or packing table also has a **Mark as failed** button. It fails
-  that station now and re-solves, adding a new plan step, just like `F` does for a random stove.
+- A prep counter, stove or packing table also has a **Mark C2 as failed at 09:10** button (with
+  that station's id and the current clock). It fails that station now and re-solves, adding a new
+  plan step, just like `F` does for a random stove. A station that has already failed shows
+  "Out of service" instead.
 
 Click the item again or press × to go back to "Kitchen now". The pin is kept across plan steps for
 as long as the item exists.
@@ -224,11 +233,12 @@ Sources: [StateFoodSafety](https://www.statefoodsafety.com/cutting-board-color-c
 
 ## 8. Code style
 
-The code is functional, with OOP used only for data:
+The Module 1 code is functional, with OOP used only for data:
 
 * **Records.** Entities and results (`Agent`, `Order`, `KitchenGrid`, `RoadNetwork`, `Scenario`,
   `CSP`, `Constraint`, `Allocation`, `Diagnosis`, ...) are `@dataclass` records. They have fields
-  only: no methods and no inheritance.
+  only: no methods and no inheritance. (Modules 2 and 3 are less strict: `Step`, `Plan` and
+  `Belief` have a few small methods, such as `Plan.sorted_steps` and `Belief.observe_disruption`.)
 * **Functions.** All behaviour is in module-level functions, for example `neighbors(grid, cell)`,
   `astar_route(net, a, b)`, `solve(csp)`, `decode(model, result)` and `apply_event(scenario, event)`.
   `apply_event` returns a *new* scenario and never changes its input.
@@ -259,7 +269,7 @@ Visualiser keys:
 | `←` / `→`, or click the time bar | Move time |
 | `↑` / `↓` | Change speed |
 | `HOME` | Back to the start of the day |
-| `TAB` / `P` | Next / previous plan step |
+| `TAB` or `N` / `P` | Next / previous plan step |
 | `1`–`9`, or click a card on the Scenarios page | Load a scenario (alphabetical: 1 base … 7 stove_failure) |
 | `R` | Close a road and re-solve |
 | `F` | Fail a stove and re-solve |
@@ -272,8 +282,10 @@ Visualiser keys:
 | `Q` / `ESC` | Quit |
 
 Headless screenshot of a page. `--page` is one of `scenarios`, `kitchen`, `delivery`, `overview`, `planning` or
-`uncertainty`, and `--step` picks the plan step. `--hover x,y` shows a tooltip. On the Kitchen page,
-`--pin station:C2`, `agent:Anu` or `batch:O1:1` pins a card, and `--tab stock` opens the Stock list:
+`uncertainty`, `--at HH:MM` sets the clock and `--step` picks the plan step (default: the last).
+`--select O2` selects an order, `--hover x,y` shows a tooltip and `--scale` sets the resolution
+multiplier (default 2). On the Kitchen page, `--pin station:C2`, `agent:Anu` or `batch:O1:1` pins a
+card, and `--tab stock` opens the Stock list:
 
 ```bash
 python -m relief_kitchen.viz --scenario configs/scenarios/base.yaml --page kitchen --at 09:10 \
