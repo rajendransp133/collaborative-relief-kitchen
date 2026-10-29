@@ -1,7 +1,7 @@
 from dataclasses import replace
 
-from relief_kitchen.env.kitchen_grid import parse_kitchen, walkable
-from relief_kitchen.search_csp.astar import astar, bfs_distances, space_time_astar
+from relief_kitchen.support.env.kitchen_grid import parse_kitchen, walkable
+from relief_kitchen.algorithms.grid_search import astar, bfs_distances, space_time_astar
 
 GRID = parse_kitchen([
     "#######",

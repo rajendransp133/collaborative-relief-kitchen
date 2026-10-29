@@ -78,7 +78,7 @@ flowchart TB
 - **Infeasibility diagnosis.** Every constraint is tagged with a category: ingredients, equipment, staff, time or transport. When an order has no solution, a direct check per category runs first (stock, working equipment, staff on shift, open roads, critical-path time); if those pass, one category at a time is relaxed to find which one blocks the order. The report therefore says *why*, e.g. "order 12: transport (only route blocked) + time (deadline 14:00)".
 
 > [!TIP]
-> **M1 is implemented.** See [docs/module1.md](docs/module1.md) for the formulation, algorithms and scenarios. To try it, run `python -m relief_kitchen.viz` (Pygame visualiser) or `python -m relief_kitchen.run --scenario configs/scenarios/infeasible.yaml` (text report).
+> **M1 is implemented.** See [docs/module1.md](docs/module1.md) for the formulation and algorithms, and [docs/scenarios.md](docs/scenarios.md) for every scenario. The algorithms worth presenting are all in `relief_kitchen/algorithms/`; helpers live in `relief_kitchen/support/` and the visualiser in `relief_kitchen/viz/`. To try it, run `python -m relief_kitchen.viz` (Pygame visualiser; its Planning and Uncertainty pages, keys L and U, show Modules 2 and 3) or `python -m relief_kitchen.run --scenario configs/scenarios/infeasible.yaml` (text report).
 >
 > ![Module 1 visualiser: kitchen page](docs/img/kitchen.png)
 
@@ -103,12 +103,18 @@ flowchart LR
 
 *Example meal plan. The rice and dal branches have no ordering constraint between them, so they run in parallel on two stoves; packaging waits for both, and loading also needs a free vehicle.*
 
+> [!TIP]
+> **M2 is implemented** (POP with causal links and threat resolution, plus a greedy scheduler). See [docs/module2.md](docs/module2.md). Run `python -m relief_kitchen.run --module m2`, or press `L` in the visualiser.
+
 ### M3 — Reasoning under uncertainty
 
 - **Beliefs** over ingredient stock (records may be stale), equipment reliability, cooking and travel durations, and future demand (shelter head counts are approximate).
 - **Bayesian updating** whenever new observations arrive, e.g. Beta–Bernoulli models for equipment failure and a Bayesian network linking road conditions to travel time.
 - **Risk estimates.** Monte Carlo rollouts of the current plan give the probability that each order finishes on time and that stock will suffice. High-risk tasks get a contingency: a backup stove, a substitute ingredient, an alternate route or vehicle.
 - **Provenance.** Every fact is tagged `confirmed` (an observed shortage), `estimated` (uncertain current inventory) or `forecast` (predicted future demand), and the tag travels with it into plans, rewards and explanations.
+
+> [!TIP]
+> **M3 is implemented** (Bayesian belief updates, analytical and Monte Carlo plan risk, contingencies). See [docs/module3.md](docs/module3.md). Run `python -m relief_kitchen.run --module m3`, or press `U` in the visualiser. Every scenario is explained in [docs/scenarios.md](docs/scenarios.md).
 
 ### M4 — Cooperative multi-agent reinforcement learning
 
@@ -233,11 +239,11 @@ collaborative-relief-kitchen/
 ├── configs/
 │   └── scenarios/          # YAML scenarios: base, demand surge, road closure, ...
 ├── relief_kitchen/
-│   ├── env/                # simulator: kitchen grid, road network, event generator
-│   ├── search_csp/         # M1: path finding, routing, CSP, infeasibility diagnosis
+│   ├── algorithms/         # M1: path finding, routing, CSP, infeasibility diagnosis (the code to present)
+│   ├── support/            # simulator (env/: kitchen grid, road network, scenarios), records, helpers, report
+│   ├── viz/                # Pygame visualiser
 │   ├── planning/           # M2: partial-order planner, scheduler, plan repair
 │   ├── uncertainty/        # M3: belief models, risk estimates, contingencies
-│   ├── marl/               # M4: environment wrapper, training, policies, baselines
 │   ├── genai/              # M5: role agents, coordinator, message bus
 │   └── evaluation/         # metrics, experiment runner, plots
 ├── notebooks/              # exploration and result analysis
@@ -266,7 +272,7 @@ Module 1 (available now):
 # Text report: routes, CSP schedule, MAPF stats and infeasibility diagnosis for each timeline step
 python -m relief_kitchen.run --scenario configs/scenarios/infeasible.yaml
 
-# Pygame visualiser: Kitchen, Delivery and Overview pages with hover details
+# Pygame visualiser: Kitchen, Delivery, Overview (M1), Planning (M2) and Uncertainty (M3) pages
 python -m relief_kitchen.viz --scenario configs/scenarios/road_closure.yaml
 
 # Tests
@@ -278,9 +284,6 @@ Planned entry points:
 ```bash
 # Run one scenario end to end
 python -m relief_kitchen.run --scenario configs/scenarios/road_closure.yaml
-
-# Train the MARL policy
-python -m relief_kitchen.marl.train --algo qmix --scenario configs/scenarios/base.yaml
 
 # Compare all setups across all scenarios
 python -m relief_kitchen.evaluation.compare --methods full independent fixed greedy

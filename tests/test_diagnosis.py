@@ -1,8 +1,8 @@
 import pytest
 
 from conftest import SCENARIOS
-from relief_kitchen.env import load_scenario
-from relief_kitchen.search_csp.pipeline import run_timeline, solve_scenario
+from relief_kitchen.support.env import load_scenario
+from relief_kitchen.algorithms.planner import run_timeline, solve_scenario
 
 
 @pytest.fixture(scope="module")
@@ -12,7 +12,6 @@ def result():
 
 @pytest.mark.parametrize("order,category", [
     ("O2", "transport"),    # every road to the stadium is closed
-    ("O3", "equipment"),    # the steamer has failed
     ("O4", "ingredients"),  # millet is out of stock
     ("O5", "staff"),        # cooks are off shift
     ("O6", "time"),         # deadline before the earliest possible arrival

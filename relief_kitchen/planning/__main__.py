@@ -8,19 +8,9 @@ from __future__ import annotations
 
 import argparse
 
-from relief_kitchen.env.scenario import load_scenario
-from .partial_order import Operator, pop
-from .scheduler import STEP_DURATION, schedule
-
-
-def _build_operators(stages) -> list[Operator]:
-    """Convert scenario Stage records into POP Operator objects."""
-    ops = []
-    for stage in stages:
-        pre = frozenset(f"{dep}_done" for dep in stage.after)
-        add = frozenset([f"{stage.name}_done"])
-        ops.append(Operator(stage.name, pre, add))
-    return ops
+from relief_kitchen.support.env.scenario import load_scenario
+from .kitchen_plan import plan_for, problem
+from .scheduler import STEP_DURATION
 
 
 def main(argv=None) -> None:
@@ -29,28 +19,14 @@ def main(argv=None) -> None:
     args = ap.parse_args(argv)
 
     sc = load_scenario(args.scenario)
-    operators = _build_operators(sc.stages)
-
-    # Give fetch a precondition so POP has something to resolve from init state
-    fetch_op = next(o for o in operators if o.name == "fetch")
-    operators[operators.index(fetch_op)] = Operator(
-        "fetch",
-        frozenset(["ingredients_available"]),
-        fetch_op.add,
-        fetch_op.delete,
-    )
-
-    init = frozenset(["ingredients_available"])
-    last_stage = sc.stages[-1].name
-    goal = frozenset([f"{last_stage}_done"])
+    _init, goal, _ops = problem(sc)
 
     print(f"\n=== Module M2: Partial-Order Planning ===")
     print(f"Scenario : {sc.name}")
     print(f"Stages   : {' -> '.join(s.name for s in sc.stages)}")
     print(f"Goal     : {goal}\n")
 
-    plan = pop(init, goal, operators)
-    times = schedule(plan)
+    plan, times = plan_for(sc)
 
     # Print execution schedule
     print(f"{'Step':<22} {'Start':>6}  {'Duration':>10}  {'Finish':>8}")

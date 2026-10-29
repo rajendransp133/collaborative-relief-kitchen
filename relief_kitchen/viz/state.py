@@ -13,10 +13,11 @@ from pathlib import Path
 
 import pygame
 
-from ..env.scenario import Event, apply_event, load_scenario
-from ..search_csp.pipeline import M1Result, solve_scenario
+from ..support.env.scenario import Event, apply_event, load_scenario
+from ..algorithms.planner import solve_scenario
+from ..support.records import M1Result
 
-PAGES = ("kitchen", "delivery", "overview")
+PAGES = ("scenarios", "kitchen", "delivery", "overview", "planning", "uncertainty")
 
 
 @dataclass
@@ -24,12 +25,15 @@ class ViewState:
     """Everything the window shows or remembers."""
 
     scenario_files: list[str]
+    catalog: list = field(default_factory=list)  # the parsed scenario files, for the Scenarios page
     path: str = ""
     page: str = "kitchen"
     speed: float = 4.0  # simulated minutes per real second
     playing: bool = True
     minute: float = 0.0
     selected: str | None = None  # order id highlighted on the overview page
+    pinned: tuple | None = None  # (kind, payload) shown in the kitchen page's Details card
+    kitchen_tab: str = "batches"  # list under the Details card: "batches" or "stock"
     show_help: bool = False
     message: str = ""
     busy: str | None = None  # label of the running background solve, if any
@@ -49,7 +53,14 @@ class ViewState:
 
 def new_state(scenario_path: str, page: str = "kitchen") -> ViewState:
     st = ViewState(sorted(str(p) for p in Path(scenario_path).parent.glob("*.yaml")), page=page)
-    load(st, scenario_path)
+    for f in st.scenario_files:
+        try:
+            sc = load_scenario(f)
+        except Exception:  # noqa: BLE001 - a broken file just isn't listed
+            continue
+        sc.path = f
+        st.catalog.append(sc)
+    load(st, str(Path(scenario_path)) if str(Path(scenario_path)) in st.scenario_files else scenario_path)
     return st
 
 
@@ -80,7 +91,7 @@ def load(st: ViewState, path: str):
             steps.append(solve_scenario(sc, label=label))
             st.pending = list(steps)
 
-    st.steps, st.step, st.selected = [], 0, None
+    st.steps, st.step, st.selected, st.pinned = [], 0, None, None
     run_in_background(st, f"Solving {Path(path).stem.replace('_', ' ')}", fn)
 
 
@@ -132,7 +143,7 @@ def random_road(r: M1Result | None, sc):
 
 
 def random_stove(sc):
-    options = [s.id for s in sc.kitchen.stations.values() if s.type in ("stove", "steamer") and not s.failed]
+    options = [s.id for s in sc.kitchen.stations.values() if s.type == "stove" and not s.failed]
     if not options:
         return None
     sid = random.choice(options)

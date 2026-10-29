@@ -3,11 +3,11 @@
 import pytest
 
 from conftest import SCENARIOS
-from relief_kitchen.env.kitchen_grid import WALK_SECONDS
-from relief_kitchen.env.scenario import total_stock
-from relief_kitchen.search_csp.astar import bfs_distances
-from relief_kitchen.search_csp.kitchen_flow import batch_journey, previous_task, stock_at, tasks_by_batch
-from relief_kitchen.search_csp.pipeline import run_timeline
+from relief_kitchen.support.env.kitchen_grid import WALK_SECONDS
+from relief_kitchen.support.env.scenario import total_stock
+from relief_kitchen.algorithms.grid_search import bfs_distances
+from relief_kitchen.support.kitchen_flow import batch_journey, previous_task, stock_at, tasks_by_batch
+from relief_kitchen.algorithms.planner import run_timeline
 
 
 @pytest.fixture(scope="module")
@@ -57,7 +57,7 @@ def test_batch_journeys_are_continuous(result):
 
 
 def test_agents_reach_their_station_before_work_starts(result):
-    from relief_kitchen.search_csp.motion import agent_position
+    from relief_kitchen.support.motion import agent_position
 
     sc, al = result.scenario, result.allocation
     assert result.motion.failures == 0 and result.motion.collisions == 0

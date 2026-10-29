@@ -1,12 +1,13 @@
 import pytest
 
 from conftest import SCENARIOS
-from relief_kitchen.env import load_scenario
-from relief_kitchen.env.entities import agent_available, recipe_satisfies
-from relief_kitchen.env.scenario import total_stock
-from relief_kitchen.search_csp.allocation import build_model, decode, solve_model
-from relief_kitchen.search_csp.csp import violated
-from relief_kitchen.search_csp.task_graph import graph_tasks
+from relief_kitchen.support.env import load_scenario
+from relief_kitchen.support.env.entities import agent_available, recipe_satisfies
+from relief_kitchen.support.env.scenario import total_stock
+from relief_kitchen.algorithms.kitchen_csp import build_model
+from relief_kitchen.support.model_helpers import decode, solve_model
+from relief_kitchen.support.csp_build import violated
+from relief_kitchen.support.task_graph import graph_tasks
 
 
 @pytest.fixture(scope="module")

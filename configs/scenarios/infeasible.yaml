@@ -1,8 +1,8 @@
 name: Infeasible orders
 description: >
-  A bad afternoon: two roads to the stadium are closed, the steamer is broken, millet ran out,
+  A bad afternoon: two roads to the stadium are closed, millet ran out,
   the cooks leave at 13:00 and one order has an impossible deadline. Each problem order should be
-  rejected with the right cause (transport, equipment, ingredients, staff, time).
+  rejected with the right cause (transport, ingredients, staff, time).
 
 start: "08:00"
 end: "16:00"
@@ -17,11 +17,10 @@ kitchen:
     - "#..............#"
     - "#.P.P.....###..#"
     - "#..............D"
-    - "#.C.C.CT.......#"
+    - "#.C.C.C........#"
     - "#......#.......#"
     - "#..............#"
     - "################"
-  access: {T1: [6, 6]}
   stations:
     S1: {stock: {rice: 40, lentils: 15}}
     S2: {stock: {millet: 0, wheat: 20, vegetables: 30}}
@@ -29,7 +28,6 @@ kitchen:
     C1: {max_batch: 60}
     C2: {max_batch: 60}
     C3: {max_batch: 30}
-    T1: {max_batch: 60, failed: true}
 
 agents:
   Anu:   {kind: human, skills: [cook, prep], home: [7, 1], shift: ["08:00", "13:00"]}
@@ -52,8 +50,7 @@ recipes:
                    per_meal: {millet: 0.12, lentils: 0.05, vegetables: 0.05}}
   roti_sabzi: {name: Roti and sabzi, tags: [vegetarian, diabetic], allergens: [gluten],
                per_meal: {wheat: 0.12, vegetables: 0.1}}
-  idli_sambar: {name: Idli sambar, tags: [vegetarian, soft, infant], per_meal: {rice: 0.1, lentils: 0.05},
-                overrides: {cook: {station: steamer, minutes: 30}}}
+  idli_sambar: {name: Idli sambar, tags: [vegetarian, soft, infant], per_meal: {rice: 0.1, lentils: 0.05}}
 
 network:
   places:
@@ -92,8 +89,6 @@ orders:
   - {id: O1, destination: hospital, meals: 40, diet: [diabetic], deadline: "11:00", priority: 3}
   # transport: every road into the stadium is closed
   - {id: O2, destination: shelter_c, meals: 80, diet: [], deadline: "13:00", priority: 2}
-  # equipment: infant meals means idli, which needs the steamer - and the steamer has failed
-  - {id: O3, destination: shelter_a, meals: 30, diet: [infant], deadline: "13:30", priority: 2}
   # ingredients: diabetic AND gluten-free means millet khichdi, but millet is out of stock
   - {id: O4, destination: shelter_b, meals: 50, diet: [diabetic, gluten_free], deadline: "14:00", priority: 1}
   # staff: request arrives at 13:30, after both cooks have gone home

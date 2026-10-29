@@ -1,4 +1,6 @@
-from relief_kitchen.search_csp.csp import CSP, constraint, solve, violated
+from relief_kitchen.algorithms.csp import solve
+from relief_kitchen.support.csp_build import constraint, violated
+from relief_kitchen.support.records import CSP
 
 AUSTRALIA = {"WA": ["NT", "SA"], "NT": ["SA", "Q"], "SA": ["Q", "NSW", "V"], "Q": ["NSW"], "NSW": ["V"]}
 

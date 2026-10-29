@@ -8,19 +8,11 @@ from __future__ import annotations
 
 import argparse
 
-from relief_kitchen.env.scenario import apply_event, load_scenario
+from relief_kitchen.support.env.scenario import apply_event, load_scenario
 from .belief import Belief
 from .contingency import suggest_contingency
 from .risk import estimate_risk, monte_carlo_risk
-
-STAGE_NAMES = ["fetch", "prep", "cook", "pack", "deliver"]
-
-# Map scenario event kinds to belief variables
-EVENT_TO_VAR = {
-    "fail_station": "stove_ok",
-    "close_road":   "road_ok",
-    "set_stock":    "supply_ok",
-}
+from .timeline import EVENT_TO_VAR, STAGE_NAMES
 
 
 def main(argv=None) -> None:
