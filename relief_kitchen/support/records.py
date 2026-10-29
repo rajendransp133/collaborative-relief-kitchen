@@ -5,7 +5,7 @@ Kept here so the algorithm files open straight on the logic.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from typing import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 

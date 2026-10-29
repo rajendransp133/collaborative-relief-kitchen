@@ -7,7 +7,8 @@ marks facts that are never relaxed, for example task precedence.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
+from typing import Callable
 from dataclasses import replace
 
 from .records import CSP, Constraint, Revise

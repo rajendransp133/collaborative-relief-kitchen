@@ -238,7 +238,6 @@ collaborative-relief-kitchen/
 │   ├── viz/                # Pygame visualiser
 │   ├── planning/           # M2: partial-order planner, scheduler, plan repair
 │   ├── uncertainty/        # M3: belief models, risk estimates, contingencies
-│   ├── marl/               # M4: environment wrapper, training, policies, baselines
 │   ├── genai/              # M5: role agents, coordinator, message bus
 │   └── evaluation/         # metrics, experiment runner, plots
 ├── notebooks/              # exploration and result analysis
@@ -279,9 +278,6 @@ Planned entry points:
 ```bash
 # Run one scenario end to end
 python -m relief_kitchen.run --scenario configs/scenarios/road_closure.yaml
-
-# Train the MARL policy
-python -m relief_kitchen.marl.train --algo qmix --scenario configs/scenarios/base.yaml
 
 # Compare all setups across all scenarios
 python -m relief_kitchen.evaluation.compare --methods full independent fixed greedy

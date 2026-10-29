@@ -14,7 +14,7 @@ The search mutates a working copy of the domains and undoes each change from a t
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from typing import Callable
 
 from ..support.csp_build import constraints_by_var
 from ..support.records import CSP, Constraint, SolveResult, SolveStats

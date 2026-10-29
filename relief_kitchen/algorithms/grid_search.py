@@ -9,7 +9,8 @@
 from __future__ import annotations
 
 import heapq
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
+from typing import Callable
 
 from ..support.env.entities import Cell
 from ..support.env.kitchen_grid import KitchenGrid, neighbors
